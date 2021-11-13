@@ -1,14 +1,15 @@
 use notify::{DebouncedEvent, Watcher, RecursiveMode, watcher};
 use std::sync::mpsc::channel;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 fn watch_files() {
     let (tx, rx) = channel();
-    let mut watcher = watcher(tx, Duration::from_secs(10)).unwrap();
+    let mut watcher = watcher(tx, Duration::from_secs(1)).unwrap();
 
-    // watcher.watch("/home/alex/Dropbox/sync/Mario & Luigi - Superstar Saga (USA, Australia).sav", RecursiveMode::Recursive).unwrap();
+    watcher.watch("/home/alex/Dropbox/sync/Mario & Luigi - Superstar Saga (USA, Australia).sav", RecursiveMode::Recursive).unwrap();
+    watcher.watch("/home/alex/Dropbox/sync/Mario & Luigi - Superstar Saga (USA, Australia).ss1", RecursiveMode::Recursive).unwrap();
     // watcher.watch("/home/alex/Mario & Luigi - Superstar Saga (USA, Australia).sav", RecursiveMode::Recursive).unwrap();
-    watcher.watch("/home/alex/Code/savesync/testfiles/old.txt", RecursiveMode::Recursive).unwrap();
+    // watcher.watch("/home/alex/Code/savesync/testfiles/old.txt", RecursiveMode::Recursive).unwrap();
 
     loop {
         match rx.recv() {
@@ -16,12 +17,12 @@ fn watch_files() {
                 match event {
                     DebouncedEvent::Write(p) | DebouncedEvent::Chmod(p) => {
                         println!("Update: {:?}", p);
-                        std::fs::copy("/home/alex/Code/savesync/testfiles/old.txt",
-                                        "/home/alex/Code/savesync/testfiles/new1.txt");
-                        std::fs::copy("/home/alex/Code/savesync/testfiles/old.txt",
-                                        "/home/alex/Code/savesync/testfiles/new2.txt");
-                        std::fs::copy("/home/alex/Code/savesync/testfiles/old.txt",
-                                        "/home/alex/Code/savesync/testfiles/new3.txt");
+                        let incage =  std::fs::metadata(&p).unwrap().modified().unwrap();
+                        let compage = std::fs::metadata("/home/alex/Dropbox/sync/Mario & Luigi - Superstar Saga (USA, Australia).ss2")
+                            .unwrap().modified().unwrap();
+                        if incage > compage {
+                            std::fs::copy(&p, "/home/alex/Dropbox/sync/Mario & Luigi - Superstar Saga (USA, Australia).ss3");
+                        }
                     }
                     DebouncedEvent::NoticeWrite(p) => println!("NoticeWrite {:?}", p),
                     DebouncedEvent::Create(p) => println!("Create {:?}", p),
