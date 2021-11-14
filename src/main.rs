@@ -1,6 +1,38 @@
 use notify::{DebouncedEvent, Watcher, RecursiveMode, watcher};
 use std::sync::mpsc::channel;
 use std::time::{Duration, SystemTime};
+use sha2::{Digest, Sha256};
+use std::env;
+use std::fs;
+use std::io::{self, Read};
+
+const BUFFER_SIZE: usize = 1024;
+
+/// Print digest result as hex string and name pair
+fn print_result(sum: &[u8], name: &str) {
+    for byte in sum {
+        print!("{:02x}", byte);
+    }
+    println!("\t{}", name);
+}
+
+/// Compute digest value for given `Reader` and print it
+/// On any error simply return without doing anything
+fn process<D: Digest + Default, R: Read>(reader: &mut R, name: &str) {
+    let mut sh = D::default();
+    let mut buffer = [0u8; BUFFER_SIZE];
+    loop {
+        let n = match reader.read(&mut buffer) {
+            Ok(n) => n,
+            Err(_) => return,
+        };
+        sh.update(&buffer[..n]);
+        if n == 0 || n < BUFFER_SIZE {
+            break;
+        }
+    }
+    print_result(&sh.finalize(), name);
+}
 
 fn watch_files() {
     let (tx, rx) = channel();
@@ -10,6 +42,7 @@ fn watch_files() {
     watcher.watch("/home/alex/Dropbox/sync/Mario & Luigi - Superstar Saga (USA, Australia).ss1", RecursiveMode::Recursive).unwrap();
     // watcher.watch("/home/alex/Mario & Luigi - Superstar Saga (USA, Australia).sav", RecursiveMode::Recursive).unwrap();
     // watcher.watch("/home/alex/Code/savesync/testfiles/old.txt", RecursiveMode::Recursive).unwrap();
+    // let mut hasher = Blake2b::new();
 
     loop {
         match rx.recv() {
@@ -20,8 +53,13 @@ fn watch_files() {
                         let incage =  std::fs::metadata(&p).unwrap().modified().unwrap();
                         let compage = std::fs::metadata("/home/alex/Dropbox/sync/Mario & Luigi - Superstar Saga (USA, Australia).ss2")
                             .unwrap().modified().unwrap();
+                        let p_str = p.clone().into_os_string().into_string().unwrap();
+                        if let Ok(mut file) = fs::File::open(&p_str) {
+                            process::<Sha256, _>(&mut file, &p_str);
+                        }
                         if incage > compage {
                             std::fs::copy(&p, "/home/alex/Dropbox/sync/Mario & Luigi - Superstar Saga (USA, Australia).ss3");
+                            println!("update {:?}", p);
                         }
                     }
                     DebouncedEvent::NoticeWrite(p) => println!("NoticeWrite {:?}", p),
