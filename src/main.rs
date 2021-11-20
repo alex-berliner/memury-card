@@ -1,78 +1,21 @@
-use std::num::ParseIntError;
+/*
+last thing I did was write something that will find all files in a directory and now I want to make a big hash table
+(this is a bad idea and isn't memory efficient) that keys the sha of every save back to an object that stores the
+filepath to every version of the save fileso that their update times can be checked and the most recent one can be
+propageted to all sources
+
+note: are there any common file systems that don't use last modified?
+*/
+
 use walkdir::WalkDir;
 use notify::{DebouncedEvent, Watcher, RecursiveMode, watcher};
 use std::sync::mpsc::channel;
-use std::time::{Duration, SystemTime};
+use std::time::{Duration};
 use sha2::{Digest, Sha256};
-use std::env;
 use std::fs;
-use std::io::{self, Read};
 
-const BUFFER_SIZE: usize = 1024;
-
-/// Print digest result as hex string and name pair
-fn print_result(sum: &[u8], name: &str) {
-    for byte in sum {
-        print!("{:02x}", byte);
-    }
-    println!("\t{}", name);
-}
-
-/// Compute digest value for given `Reader` and print it
-/// On any error simply return without doing anything
-fn process<D: Digest + Default, R: Read>(reader: &mut R, name: &str) {
-    let mut sh = D::default();
-    let mut buffer = [0u8; BUFFER_SIZE];
-    loop {
-        let n = match reader.read(&mut buffer) {
-            Ok(n) => n,
-            Err(_) => return,
-        };
-        sh.update(&buffer[..n]);
-        if n == 0 || n < BUFFER_SIZE {
-            break;
-        }
-    }
-    print_result(&sh.finalize(), name);
-}
-
-fn watch_files() {
-    let (tx, rx) = channel();
-    let mut watcher = watcher(tx, Duration::from_secs(1)).unwrap();
-
-    watcher.watch("/home/alex/Dropbox/sync/Mario & Luigi - Superstar Saga (USA, Australia).sav", RecursiveMode::Recursive).unwrap();
-    watcher.watch("/home/alex/Dropbox/sync/Mario & Luigi - Superstar Saga (USA, Australia).ss1", RecursiveMode::Recursive).unwrap();
-    // watcher.watch("/home/alex/Mario & Luigi - Superstar Saga (USA, Australia).sav", RecursiveMode::Recursive).unwrap();
-    // watcher.watch("/home/alex/Code/savesync/testfiles/old.txt", RecursiveMode::Recursive).unwrap();
-
-    loop {
-        match rx.recv() {
-            Ok(event) =>
-                match event {
-                    DebouncedEvent::Write(p) | DebouncedEvent::Chmod(p) => {
-                        println!("Update: {:?}", p);
-                        let incage =  std::fs::metadata(&p).unwrap().modified().unwrap();
-                        let compage = std::fs::metadata("/home/alex/Dropbox/sync/Mario & Luigi - Superstar Saga (USA, Australia).ss2")
-                            .unwrap().modified().unwrap();
-                        let p_str = p.clone().into_os_string().into_string().unwrap();
-                        if let Ok(mut file) = fs::File::open(&p_str) {
-                            process::<Sha256, _>(&mut file, &p_str);
-                        }
-                        if incage > compage {
-                            std::fs::copy(&p, "/home/alex/Dropbox/sync/Mario & Luigi - Superstar Saga (USA, Australia).ss3");
-                            println!("update {:?}", p);
-                        }
-                    }
-                    DebouncedEvent::NoticeWrite(p) => println!("NoticeWrite {:?}", p),
-                    DebouncedEvent::Create(p) => println!("Create {:?}", p),
-                    DebouncedEvent::Remove(p) => println!("Remove {:?}", p),
-                    DebouncedEvent::NoticeRemove(p)  => println!("NoticeRemove {:?}", p),
-                    DebouncedEvent::Rename(a, b) => println!("Rename {:?} -> {:?}", a, b),
-                    _ => (),
-                },
-           Err(e) => println!("watch error: {:?}", e),
-        };
-    }
+struct Savefile {
+    result: Vec<u8>,
 }
 
 fn do_links() {
@@ -107,6 +50,19 @@ fn get_metadata() {
 
     println!("{:?}", metadata.file_type());
 }
+fn print_type_of<T>(_: &T) {
+    println!("{}", std::any::type_name::<T>())
+}
+
+fn file_sha256(path: &str) -> Savefile {
+    let bytes = std::fs::read(path).unwrap();
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    let s = Savefile{
+        result: hasher.finalize().to_vec(),
+    };
+    s
+}
 
 fn find_savs() {
     let walkdir = "/home/alex/Dropbox/sync";
@@ -136,7 +92,7 @@ fn find_savs() {
                             .unwrap().modified().unwrap();
                         let p_str = p.clone().into_os_string().into_string().unwrap();
                         if let Ok(mut file) = fs::File::open(&p_str) {
-                            process::<Sha256, _>(&mut file, &p_str);
+                            file_sha256(&p_str);
                         }
                         if incage > compage {
                             std::fs::copy(&p, "/home/alex/Dropbox/sync/Mario & Luigi - Superstar Saga (USA, Australia).ss3");
