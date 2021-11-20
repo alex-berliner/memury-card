@@ -1,4 +1,10 @@
 /*
+versioned storage area: this app currently just keeps files in sync as they're updated. the true purpose is to maintain
+a primary area where saves will be located. saves that don't exist in this area will be copied into it. the program will
+on startup/periodically/continuously/when responding to events crawl monitored directories to find saves that the user
+has in their save directories that should be copied into the storage area
+two saves with the same name will be kept in sync with the program copying the more recent save on top of the old save.
+
 note: are there any common file systems that don't use last modified?
 */
 
@@ -16,9 +22,9 @@ struct Savedata {
 
 fn do_links() {
     let mario_tuple = vec![
-        ("/home/alex/Dropbox/sync/Mario & Luigi - Superstar Saga (USA, Australia).gba",
+        ("/home/alex/Dropbox/rand/Mario & Luigi - Superstar Saga (USA, Australia).gba",
             "/home/alex/Mario & Luigi - Superstar Saga (USA, Australia).gba"),
-        ("/home/alex/Dropbox/sync/Mario & Luigi - Superstar Saga (USA, Australia).sav",
+        ("/home/alex/Dropbox/rand/Mario & Luigi - Superstar Saga (USA, Australia).sav",
             "/home/alex/Mario & Luigi - Superstar Saga (USA, Australia).sav"),
     ];
     for link in mario_tuple.iter() {
@@ -42,7 +48,7 @@ fn get_metadata() {
     // check if old data is in use (defer)
     // sort by having save file header checks (defer)
     // json file managed directory structure (defer)
-    let metadata = std::fs::metadata("/home/alex/Dropbox/sync/Mario & Luigi - Superstar Saga (USA, Australia).gba").unwrap();
+    let metadata = std::fs::metadata("/home/alex/Dropbox/rand/Mario & Luigi - Superstar Saga (USA, Australia).gba").unwrap();
 
     println!("{:?}", metadata.file_type());
 }
@@ -60,7 +66,7 @@ fn file_sha256(path: &str) -> String {
 }
 
 fn find_savs(save_map:&mut HashMap<String, Savedata>) {
-    let walkdir = "/home/alex/Dropbox/sync";
+    let walkdir = "/home/alex/Dropbox/rand";
     let (tx, rx) = channel();
     let mut watcher = watcher(tx, Duration::from_secs(1)).unwrap();
 
@@ -119,10 +125,10 @@ fn find_savs(save_map:&mut HashMap<String, Savedata>) {
                         }
                         // let p_str = p.clone().into_os_string().into_string().unwrap();
                         // let incage =  std::fs::metadata(&p).unwrap().modified().unwrap();
-                        // let compage = std::fs::metadata("/home/alex/Dropbox/sync/Mario & Luigi - Superstar Saga (USA, Australia).ss2")
+                        // let compage = std::fs::metadata("/home/alex/Dropbox/rand/Mario & Luigi - Superstar Saga (USA, Australia).ss2")
                         //     .unwrap().modified().unwrap();
                         // if incage > compage {
-                        //     std::fs::copy(&p, "/home/alex/Dropbox/sync/Mario & Luigi - Superstar Saga (USA, Australia).ss3");
+                        //     std::fs::copy(&p, "/home/alex/Dropbox/rand/Mario & Luigi - Superstar Saga (USA, Australia).ss3");
                         //     println!("update {:?}", p);
                         // }
                     }
