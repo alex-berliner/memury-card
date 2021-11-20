@@ -13,6 +13,7 @@ use std::sync::mpsc::channel;
 use std::time::{Duration};
 use sha2::{Digest, Sha256};
 use std::fs;
+use std::collections::{HashMap, HashSet};
 
 struct Savefile {
     result: String,
@@ -58,7 +59,7 @@ fn file_sha256(path: &str) -> Savefile {
     let bytes = std::fs::read(path).unwrap();
     let mut hasher = Sha256::new();
     hasher.update(bytes);
-    let s = Savefile{
+    let s = Savefile {
         // TODO: this produces a string like "[A3, FE, ..., E3]", but hey it's accurate. if this thing works i'll fix it
         result: format!("{:02X?}", hasher.finalize()),
     };
@@ -69,6 +70,8 @@ fn find_savs() {
     let walkdir = "/home/alex/Dropbox/sync";
     let (tx, rx) = channel();
     let mut watcher = watcher(tx, Duration::from_secs(1)).unwrap();
+    let mut save_map/* : HashMap<&str, HashSet<&str>> */ = HashMap::new();
+
     for entry in WalkDir::new(walkdir) .follow_links(true) .into_iter() .filter_map(|e| e.ok()) {
         let f_name = entry.file_name().to_string_lossy();
         let sec = entry.metadata().unwrap().modified().unwrap();
@@ -94,12 +97,23 @@ fn find_savs() {
                         let p_str = p.clone().into_os_string().into_string().unwrap();
                         if let Ok(mut file) = fs::File::open(&p_str) {
                             let res = file_sha256(&p_str);
-                            println!("{:?}", res.result);
+                            // println!("{:?}", res.result);
+                            // https://stackoverflow.com/a/65550108
+                            match save_map.get(&res.result) {
+                                Some(v) => ()/* {
+                                    println!("yes existy {:?}", v);
+                                } */,
+                                None => {
+                                    let myset: HashSet<&str> = HashSet::new();
+                                    save_map.insert(&res.result, myset);
+                                    println!("insert {:?}", p_str);
+                                },
+                            }
                         }
-                        if incage > compage {
-                            std::fs::copy(&p, "/home/alex/Dropbox/sync/Mario & Luigi - Superstar Saga (USA, Australia).ss3");
-                            println!("update {:?}", p);
-                        }
+                        // if incage > compage {
+                        //     std::fs::copy(&p, "/home/alex/Dropbox/sync/Mario & Luigi - Superstar Saga (USA, Australia).ss3");
+                        //     println!("update {:?}", p);
+                        // }
                     }
                     DebouncedEvent::NoticeWrite(p) => println!("NoticeWrite {:?}", p),
                     DebouncedEvent::Create(p) => println!("Create {:?}", p),
