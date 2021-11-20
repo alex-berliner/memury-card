@@ -1,7 +1,7 @@
 /*
 last thing I did was write something that will find all files in a directory and now I want to make a big hash table
 (this is a bad idea and isn't memory efficient) that keys the sha of every save back to an object that stores the
-filepath to every version of the save fileso that their update times can be checked and the most recent one can be
+filepath to every version of the save file (i am here) so that their update times can be checked and the most recent one can be
 propageted to all sources
 
 note: are there any common file systems that don't use last modified?
@@ -47,6 +47,7 @@ fn get_metadata() {
 
     println!("{:?}", metadata.file_type());
 }
+
 fn print_type_of<T>(_: &T) {
     println!("{}", std::any::type_name::<T>())
 }
@@ -59,11 +60,10 @@ fn file_sha256(path: &str) -> String {
     format!("{:02X?}", hasher.finalize())
 }
 
-fn find_savs() {
+fn find_savs(save_map:&mut HashMap<String, HashMap<String, String>>) {
     let walkdir = "/home/alex/Dropbox/sync";
     let (tx, rx) = channel();
     let mut watcher = watcher(tx, Duration::from_secs(1)).unwrap();
-    let mut save_map: HashMap<String, HashMap<String, String>> = HashMap::new();
 
     for entry in WalkDir::new(walkdir) .follow_links(true) .into_iter() .filter_map(|e| e.ok()) {
         let f_name = entry.file_name().to_string_lossy();
@@ -119,7 +119,8 @@ fn find_savs() {
 }
 
 fn main() {
+    let mut save_map = HashMap::new();
     // do_links();
     // get_metadata();
-    find_savs();
+    find_savs(&mut save_map);
 }
