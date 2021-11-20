@@ -73,13 +73,15 @@ fn find_savs() {
         // it's important to set up hashing to ensure that files that are currently being tracked aren't inserted into
         // the system as current
         if f_name.ends_with(".ss1") /* || f_name.ends_with(".ss2") || f_name.ends_with(".ss3") */ {
+            // TODO: this needs to hash on filename and catalog the different versions of the file instead of what it
+            // does right now
             let entry = entry.path().to_str().unwrap();
             watcher.watch(entry, RecursiveMode::Recursive).unwrap();
             let res = file_sha256(&entry);
             println!("{:?}", entry);
             println!("{:?}", res);
-            let set = save_map.entry(res).or_insert_with(HashSet::new);
-            set.insert(entry.to_string());
+            let set = save_map.entry(f_name.to_string()).or_insert_with(HashSet::new);
+            set.insert(res.to_string());
         }
     }
     let hs = save_map.get(&file_sha256("/home/alex/Dropbox/sync/Mario & Luigi - Superstar Saga (USA, Australia).ss1")).unwrap();
