@@ -1,9 +1,4 @@
 /*
-last thing I did was write something that will find all files in a directory and now I want to make a big hash table
-(this is a bad idea and isn't memory efficient) that keys the sha of every save back to an object that stores the
-filepath to every version of the save file (i am here) so that their update times can be checked and the most recent one can be
-propagated to all sources
-
 note: are there any common file systems that don't use last modified?
 */
 
@@ -18,12 +13,6 @@ use std::collections::{HashMap, HashSet};
 struct Savedata {
     filemap: HashMap<String, String>,
 }
-
-// impl Savedata {
-//     fn create(&mut self) {
-//         self.filemap = HashMap::new();
-//     }
-// }
 
 fn do_links() {
     let mario_tuple = vec![
@@ -96,17 +85,38 @@ fn find_savs(save_map:&mut HashMap<String, Savedata>) {
         }
     }
 
-    let target: String = "game2.ss1".to_string();
+    // let target: String = "game2.ss1".to_string();
     // TODO logic for file doesn't exist
-    let hs = save_map.get(&target).unwrap();
-    println!("count {:?} {:?}", target, hs.filemap.len());
+    // let hs = save_map.get(&target).unwrap();
+    // println!("count {:?} {:?}", target, hs.filemap.len());
 
     loop {
         match rx.recv() {
             Ok(event) =>
                 match event {
                     DebouncedEvent::Write(p) | DebouncedEvent::Chmod(p) => {
-                        println!("Update: {:?}", p);
+                        let p = &p.into_os_string().into_string().unwrap();
+                        // println!("Update: {:?}", p);
+                        let new_hash = file_sha256(p);
+                        // println!("new_hash: {:?}", new_hash);
+                        let path_split: Vec<&str> = p.split("/").collect();
+                        let fname = path_split.last().unwrap();
+                        let hs = save_map.get(*fname).unwrap();
+                        // TODO: a file update is n^2 because it triggers "no copy" checks on each other file. can be
+                        // fixed by caching the hash of the last saved value and not doing anything if the hash is the
+                        // same
+                        for (key, value) in &hs.filemap {
+                            // println!("------------> {} / {}", key, value);
+                            let real_hash = file_sha256(key);
+                            // println!("real hash: {:?}", real_hash);
+                            if new_hash != real_hash {
+                                println!("must copy\n{:?}\n{:?}", new_hash, real_hash);
+                                println!("{:?}", key);
+                                std::fs::copy(&p, key);
+                            } else {
+                                println!("no copy");
+                            }
+                        }
                         // let p_str = p.clone().into_os_string().into_string().unwrap();
                         // let incage =  std::fs::metadata(&p).unwrap().modified().unwrap();
                         // let compage = std::fs::metadata("/home/alex/Dropbox/sync/Mario & Luigi - Superstar Saga (USA, Australia).ss2")
