@@ -63,7 +63,7 @@ fn find_savs() {
     let walkdir = "/home/alex/Dropbox/sync";
     let (tx, rx) = channel();
     let mut watcher = watcher(tx, Duration::from_secs(1)).unwrap();
-    let mut save_map: HashMap<String, HashSet<String>> = HashMap::new();
+    let mut save_map: HashMap<String, HashMap<String, String>> = HashMap::new();
 
     for entry in WalkDir::new(walkdir) .follow_links(true) .into_iter() .filter_map(|e| e.ok()) {
         let f_name = entry.file_name().to_string_lossy();
@@ -78,14 +78,18 @@ fn find_savs() {
             let entry = entry.path().to_str().unwrap();
             watcher.watch(entry, RecursiveMode::Recursive).unwrap();
             let res = file_sha256(&entry);
-            println!("{:?}", entry);
-            println!("{:?}", res);
-            let set = save_map.entry(f_name.to_string()).or_insert_with(HashSet::new);
-            set.insert(res.to_string());
+            println!("entry  {:?}", entry);
+            println!("res    {:?}", res);
+            println!("f_name {:?}", f_name);
+            let inner_map = save_map.entry(f_name.to_string()).or_insert_with(HashMap::new);
+            inner_map.insert(entry.to_string(), res.to_string());
         }
     }
-    let hs = save_map.get(&file_sha256("/home/alex/Dropbox/sync/Mario & Luigi - Superstar Saga (USA, Australia).ss1")).unwrap();
-    println!("{:?}", hs.len());
+
+    let target: String = "game2.ss1".to_string();
+    // TODO logic for file doesn't exist
+    let hs = save_map.get(&target).unwrap();
+    println!("count {:?} {:?}", target, hs.len());
 
     loop {
         match rx.recv() {
