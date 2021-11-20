@@ -2,7 +2,7 @@
 last thing I did was write something that will find all files in a directory and now I want to make a big hash table
 (this is a bad idea and isn't memory efficient) that keys the sha of every save back to an object that stores the
 filepath to every version of the save file (i am here) so that their update times can be checked and the most recent one can be
-propageted to all sources
+propagated to all sources
 
 note: are there any common file systems that don't use last modified?
 */
@@ -14,6 +14,16 @@ use std::time::{Duration};
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::collections::{HashMap, HashSet};
+
+struct Savedata {
+    filemap: HashMap<String, String>,
+}
+
+// impl Savedata {
+//     fn create(&mut self) {
+//         self.filemap = HashMap::new();
+//     }
+// }
 
 fn do_links() {
     let mario_tuple = vec![
@@ -60,7 +70,7 @@ fn file_sha256(path: &str) -> String {
     format!("{:02X?}", hasher.finalize())
 }
 
-fn find_savs(save_map:&mut HashMap<String, HashMap<String, String>>) {
+fn find_savs(save_map:&mut HashMap<String, Savedata>) {
     let walkdir = "/home/alex/Dropbox/sync";
     let (tx, rx) = channel();
     let mut watcher = watcher(tx, Duration::from_secs(1)).unwrap();
@@ -81,15 +91,15 @@ fn find_savs(save_map:&mut HashMap<String, HashMap<String, String>>) {
             println!("entry  {:?}", entry);
             println!("res    {:?}", res);
             println!("f_name {:?}", f_name);
-            let inner_map = save_map.entry(f_name.to_string()).or_insert_with(HashMap::new);
-            inner_map.insert(entry.to_string(), res.to_string());
+            let inner_map = save_map.entry(f_name.to_string()).or_insert_with(||{Savedata{filemap: HashMap::new()}});
+            inner_map.filemap.insert(entry.to_string(), res.to_string());
         }
     }
 
     let target: String = "game2.ss1".to_string();
     // TODO logic for file doesn't exist
     let hs = save_map.get(&target).unwrap();
-    println!("count {:?} {:?}", target, hs.len());
+    println!("count {:?} {:?}", target, hs.filemap.len());
 
     loop {
         match rx.recv() {
