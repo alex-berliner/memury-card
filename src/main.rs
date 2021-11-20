@@ -15,7 +15,7 @@ use sha2::{Digest, Sha256};
 use std::fs;
 
 struct Savefile {
-    result: Vec<u8>,
+    result: String,
 }
 
 fn do_links() {
@@ -59,7 +59,8 @@ fn file_sha256(path: &str) -> Savefile {
     let mut hasher = Sha256::new();
     hasher.update(bytes);
     let s = Savefile{
-        result: hasher.finalize().to_vec(),
+        // TODO: this produces a string like "[A3, FE, ..., E3]", but hey it's accurate. if this thing works i'll fix it
+        result: format!("{:02X?}", hasher.finalize()),
     };
     s
 }
@@ -92,7 +93,8 @@ fn find_savs() {
                             .unwrap().modified().unwrap();
                         let p_str = p.clone().into_os_string().into_string().unwrap();
                         if let Ok(mut file) = fs::File::open(&p_str) {
-                            file_sha256(&p_str);
+                            let res = file_sha256(&p_str);
+                            println!("{:?}", res.result);
                         }
                         if incage > compage {
                             std::fs::copy(&p, "/home/alex/Dropbox/sync/Mario & Luigi - Superstar Saga (USA, Australia).ss3");
@@ -113,7 +115,6 @@ fn find_savs() {
 
 fn main() {
     // do_links();
-    // watch_files();
     // get_metadata();
     find_savs();
 }
