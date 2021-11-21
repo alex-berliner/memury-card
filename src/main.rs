@@ -72,7 +72,7 @@ fn file_sha256(path: &str) -> String {
     format!("{:02X?}", hasher.finalize())
 }
 
-fn find_savs(save_map:&mut HashMap<String, Savedata>) {
+fn find_savs(globals: &mut Globals) {
     let walkdir = "/home/alex/Dropbox/rand";
 
     for entry in WalkDir::new(walkdir) .follow_links(true) .into_iter() .filter_map(|e| e.ok()) {
@@ -90,16 +90,16 @@ fn find_savs(save_map:&mut HashMap<String, Savedata>) {
             // println!("entry  {:?}", entry);
             // println!("res    {:?}", res);
             // println!("f_name {:?}", f_name);
-            let inner_map = save_map.entry(f_name.to_string()).or_insert_with(||{Savedata{filemap: HashMap::new()}});
+            let inner_map = globals.save_map.entry(f_name.to_string()).or_insert_with(||{Savedata{filemap: HashMap::new()}});
             inner_map.filemap.insert(entry.to_string(), res.to_string());
         }
     }
 }
 
-fn setup_watch(globals: &mut Globals, save_map:&mut HashMap<String, Savedata>) {
+fn setup_watch(globals: &mut Globals) {
     // https://stackoverflow.com/a/45724688
-    for (ki, vi) in &*save_map {
-        let hs = save_map.get(ki).unwrap();
+    for (ki, vi) in globals.save_map.iter() {
+        let hs = globals.save_map.get(ki).unwrap();
         for (kj, vj) in &hs.filemap {
             &globals.watcher.watch(kj, RecursiveMode::Recursive).unwrap();
             println!("Watching {:?}", kj);
@@ -107,7 +107,7 @@ fn setup_watch(globals: &mut Globals, save_map:&mut HashMap<String, Savedata>) {
     }
 }
 
-fn listen(globals: &mut Globals, save_map:&mut HashMap<String, Savedata>) {
+fn listen(globals: &mut Globals) {
     loop {
         match globals.rx.recv() {
             Ok(event) =>
@@ -119,7 +119,7 @@ fn listen(globals: &mut Globals, save_map:&mut HashMap<String, Savedata>) {
                         // println!("new_hash: {:?}", new_hash);
                         let path_split: Vec<&str> = p.split("/").collect();
                         let fname = path_split.last().unwrap();
-                        let hs = save_map.get(*fname).unwrap();
+                        let hs = globals.save_map.get(*fname).unwrap();
                         // TODO: a file update is n^2 because it triggers "no copy" checks on each other file. can be
                         // fixed by caching the hash of the last saved value and not doing anything if the hash is the
                         // same
@@ -166,12 +166,9 @@ fn create_globals() -> Globals {
 
 fn main() {
     let mut globals = create_globals();
-    let mut save_map = HashMap::new();
-    // do_links();
-    // get_metadata();
     create_globals();
     setup();
-    find_savs(&mut save_map);
-    setup_watch(&mut globals, &mut save_map);
-    listen(&mut globals, &mut save_map);
+    find_savs(&mut globals);
+    setup_watch(&mut globals);
+    listen(&mut globals);
 }
