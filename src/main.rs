@@ -21,7 +21,7 @@ struct Savedata {
     filemap: HashMap<String, String>,
 }
 
-struct Chlem {
+struct Globals {
     rx: std::sync::mpsc::Receiver<notify::DebouncedEvent>,
     watcher: notify::inotify::INotifyWatcher,
     save_map: HashMap<String, Savedata>,
@@ -96,19 +96,20 @@ fn find_savs(save_map:&mut HashMap<String, Savedata>) {
     }
 }
 
-fn listen(save_map:&mut HashMap<String, Savedata>) {
-    let mut chlem = chlemer();
+fn setup_watch(globals: &mut Globals, save_map:&mut HashMap<String, Savedata>) {
     // https://stackoverflow.com/a/45724688
     for (ki, vi) in &*save_map {
         let hs = save_map.get(ki).unwrap();
         for (kj, vj) in &hs.filemap {
-            &chlem.watcher.watch(kj, RecursiveMode::Recursive).unwrap();
+            &globals.watcher.watch(kj, RecursiveMode::Recursive).unwrap();
             println!("Watching {:?}", kj);
         }
     }
+}
 
+fn listen(globals: &mut Globals, save_map:&mut HashMap<String, Savedata>) {
     loop {
-        match chlem.rx.recv() {
+        match globals.rx.recv() {
             Ok(event) =>
                 match event {
                     DebouncedEvent::Write(p) | DebouncedEvent::Chmod(p) => {
@@ -151,24 +152,26 @@ fn setup() {
     let home_dir = "/home/alex/Dropbox/sync";
     fs::create_dir_all(&home_dir).unwrap();
 }
-fn chlemer() -> Chlem {
+fn create_globals() -> Globals {
     let (tx, rx) = channel();
     let mut watcher = watcher(tx, Duration::from_secs(1)).unwrap();
     let mut save_map = HashMap::new();
-    let chlem = Chlem {
+    let globals = Globals {
         rx: rx,
         watcher: watcher,
         save_map: save_map,
     };
-    chlem
+    globals
 }
 
 fn main() {
+    let mut globals = create_globals();
     let mut save_map = HashMap::new();
     // do_links();
     // get_metadata();
-    chlemer();
+    create_globals();
     setup();
     find_savs(&mut save_map);
-    listen(&mut save_map);
+    setup_watch(&mut globals, &mut save_map);
+    listen(&mut globals, &mut save_map);
 }
