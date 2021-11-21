@@ -16,8 +16,15 @@ use sha2::{Digest, Sha256};
 use std::fs;
 use std::collections::{HashMap, HashSet};
 
+
 struct Savedata {
     filemap: HashMap<String, String>,
+}
+
+struct Chlem {
+    rx: std::sync::mpsc::Receiver<notify::DebouncedEvent>,
+    watcher: notify::inotify::INotifyWatcher,
+    save_map: HashMap<String, Savedata>,
 }
 
 fn do_links() {
@@ -90,19 +97,18 @@ fn find_savs(save_map:&mut HashMap<String, Savedata>) {
 }
 
 fn listen(save_map:&mut HashMap<String, Savedata>) {
-    let (tx, rx) = channel();
-    let mut watcher = watcher(tx, Duration::from_secs(1)).unwrap();
+    let mut chlem = chlemer();
     // https://stackoverflow.com/a/45724688
     for (ki, vi) in &*save_map {
         let hs = save_map.get(ki).unwrap();
         for (kj, vj) in &hs.filemap {
-            watcher.watch(kj, RecursiveMode::Recursive).unwrap();
+            &chlem.watcher.watch(kj, RecursiveMode::Recursive).unwrap();
             println!("Watching {:?}", kj);
         }
     }
 
     loop {
-        match rx.recv() {
+        match chlem.rx.recv() {
             Ok(event) =>
                 match event {
                     DebouncedEvent::Write(p) | DebouncedEvent::Chmod(p) => {
@@ -145,11 +151,23 @@ fn setup() {
     let home_dir = "/home/alex/Dropbox/sync";
     fs::create_dir_all(&home_dir).unwrap();
 }
+fn chlemer() -> Chlem {
+    let (tx, rx) = channel();
+    let mut watcher = watcher(tx, Duration::from_secs(1)).unwrap();
+    let mut save_map = HashMap::new();
+    let chlem = Chlem {
+        rx: rx,
+        watcher: watcher,
+        save_map: save_map,
+    };
+    chlem
+}
 
 fn main() {
     let mut save_map = HashMap::new();
     // do_links();
     // get_metadata();
+    chlemer();
     setup();
     find_savs(&mut save_map);
     listen(&mut save_map);
