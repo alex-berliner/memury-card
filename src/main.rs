@@ -67,8 +67,6 @@ fn file_sha256(path: &str) -> String {
 
 fn find_savs(save_map:&mut HashMap<String, Savedata>) {
     let walkdir = "/home/alex/Dropbox/rand";
-    let (tx, rx) = channel();
-    let mut watcher = watcher(tx, Duration::from_secs(1)).unwrap();
 
     for entry in WalkDir::new(walkdir) .follow_links(true) .into_iter() .filter_map(|e| e.ok()) {
         let f_name = entry.file_name().to_string_lossy();
@@ -81,20 +79,27 @@ fn find_savs(save_map:&mut HashMap<String, Savedata>) {
             // TODO: this needs to hash on filename and catalog the different versions of the file instead of what it
             // does right now
             let entry = entry.path().to_str().unwrap();
-            watcher.watch(entry, RecursiveMode::Recursive).unwrap();
             let res = file_sha256(&entry);
-            println!("entry  {:?}", entry);
-            println!("res    {:?}", res);
-            println!("f_name {:?}", f_name);
+            // println!("entry  {:?}", entry);
+            // println!("res    {:?}", res);
+            // println!("f_name {:?}", f_name);
             let inner_map = save_map.entry(f_name.to_string()).or_insert_with(||{Savedata{filemap: HashMap::new()}});
             inner_map.filemap.insert(entry.to_string(), res.to_string());
         }
     }
+}
 
-    // let target: String = "game2.ss1".to_string();
-    // TODO logic for file doesn't exist
-    // let hs = save_map.get(&target).unwrap();
-    // println!("count {:?} {:?}", target, hs.filemap.len());
+fn listen(save_map:&mut HashMap<String, Savedata>) {
+    let (tx, rx) = channel();
+    let mut watcher = watcher(tx, Duration::from_secs(1)).unwrap();
+    // https://stackoverflow.com/a/45724688
+    for (ki, vi) in &*save_map {
+        let hs = save_map.get(ki).unwrap();
+        for (kj, vj) in &hs.filemap {
+            watcher.watch(kj, RecursiveMode::Recursive).unwrap();
+            println!("Watching {:?}", kj);
+        }
+    }
 
     loop {
         match rx.recv() {
@@ -123,14 +128,6 @@ fn find_savs(save_map:&mut HashMap<String, Savedata>) {
                                 println!("no copy");
                             }
                         }
-                        // let p_str = p.clone().into_os_string().into_string().unwrap();
-                        // let incage =  std::fs::metadata(&p).unwrap().modified().unwrap();
-                        // let compage = std::fs::metadata("/home/alex/Dropbox/rand/Mario & Luigi - Superstar Saga (USA, Australia).ss2")
-                        //     .unwrap().modified().unwrap();
-                        // if incage > compage {
-                        //     std::fs::copy(&p, "/home/alex/Dropbox/rand/Mario & Luigi - Superstar Saga (USA, Australia).ss3");
-                        //     println!("update {:?}", p);
-                        // }
                     }
                     DebouncedEvent::NoticeWrite(p) => println!("NoticeWrite {:?}", p),
                     DebouncedEvent::Create(p) => println!("Create {:?}", p),
@@ -144,9 +141,16 @@ fn find_savs(save_map:&mut HashMap<String, Savedata>) {
     }
 }
 
+fn setup() {
+    let home_dir = "/home/alex/Dropbox/sync";
+    fs::create_dir_all(&home_dir).unwrap();
+}
+
 fn main() {
     let mut save_map = HashMap::new();
     // do_links();
     // get_metadata();
+    setup();
     find_savs(&mut save_map);
+    listen(&mut save_map);
 }
