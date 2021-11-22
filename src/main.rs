@@ -5,6 +5,22 @@ on startup/periodically/continuously/when responding to events crawl monitored d
 has in their save directories that should be copied into the storage area
 two saves with the same name will be kept in sync with the program copying the more recent save on top of the old save.
 
+important detour: threading. currently the listen() function isn't threaded which will probably become a problem if I
+want the program to do more things or just handle different operations at the same time like updating entries while
+continuing to listen for savegame changes. so listen(), which for savegames looks for updates and maintains parity must
+be threaded, along with, in the future, the things that will be manipulating which savegames are being watched, ui, idk.
+globals.watcher stores a path to every file currently being kept track of, as does globals.save_map. A channel is
+probably the best way to funnel updates to the watcher, but do more things need access to save_map besides just the one
+thread? probably not, if this were a module it would be just used for maintaining parity and it could probably be stored
+in the thread.
+
+thread 1:
+responds to watch/unwatch events
+owns save_map
+
+thread 2:
+finds watch/unwatch events
+
 note: are there any common file systems that don't use last modified?
 */
 
@@ -15,7 +31,7 @@ use std::time::{Duration};
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::collections::{HashMap, HashSet};
-
+use std::thread;
 
 struct Savedata {
     filemap: HashMap<String, String>,
@@ -101,6 +117,7 @@ fn setup_watch(globals: &mut Globals) {
     for (ki, vi) in globals.save_map.iter() {
         let hs = globals.save_map.get(ki).unwrap();
         for (kj, vj) in &hs.filemap {
+            // https://docs.rs/notify/4.0.17/notify/trait.Watcher.html#tymethod.unwatch
             &globals.watcher.watch(kj, RecursiveMode::Recursive).unwrap();
             println!("Watching {:?}", kj);
         }
@@ -152,6 +169,7 @@ fn setup() {
     let home_dir = "/home/alex/Dropbox/sync";
     fs::create_dir_all(&home_dir).unwrap();
 }
+
 fn create_globals() -> Globals {
     let (tx, rx) = channel();
     let mut watcher = watcher(tx, Duration::from_secs(1)).unwrap();
@@ -170,5 +188,9 @@ fn main() {
     setup();
     find_savs(&mut globals);
     setup_watch(&mut globals);
-    listen(&mut globals);
+    let handle = thread::spawn(move || {
+        listen(&mut globals);
+    });
+    handle.join().unwrap();
+    // globals.save_map.get("*fname").unwrap();
 }
