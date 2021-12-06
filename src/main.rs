@@ -14,19 +14,12 @@ probably the best way to funnel updates to the watcher, but do more things need 
 thread? probably not, if this were a module it would be just used for maintaining parity and it could probably be stored
 in the thread.
 
-thread 1:
-responds to watch/unwatch events
-owns save_map
-
-thread 2:
-finds watch/unwatch events
-
 note: are there any common file systems that don't use last modified?
 */
 
 use walkdir::WalkDir;
 use notify::{DebouncedEvent, Watcher, RecursiveMode, watcher};
-use std::sync::mpsc::channel;
+use std::sync::mpsc;
 use std::time::{Duration};
 use sha2::{Digest, Sha256};
 use std::fs;
@@ -38,42 +31,9 @@ struct Savedata {
 }
 
 struct Globals {
-    rx: std::sync::mpsc::Receiver<notify::DebouncedEvent>,
+    rx: mpsc::Receiver<notify::DebouncedEvent>,
     watcher: notify::inotify::INotifyWatcher,
     save_map: HashMap<String, Savedata>,
-}
-
-fn do_links() {
-    let mario_tuple = vec![
-        ("/home/alex/Dropbox/rand/Mario & Luigi - Superstar Saga (USA, Australia).gba",
-            "/home/alex/Mario & Luigi - Superstar Saga (USA, Australia).gba"),
-        ("/home/alex/Dropbox/rand/Mario & Luigi - Superstar Saga (USA, Australia).sav",
-            "/home/alex/Mario & Luigi - Superstar Saga (USA, Australia).sav"),
-    ];
-    for link in mario_tuple.iter() {
-        std::os::unix::fs::symlink(link.0, link.1);
-    }
-}
-
-// take a directory. if "sync", ensure all files are up to date between the two folders. if "symlink", copy the original
-// file to the sync folder and replace the original with a symlink (optimization, start with copy mode only?).
-fn get_metadata() {
-    // file scanner: look for files of specified file types in targeted directories. if found, add by copy to versioned
-    // storage area. when adding to versioned storage area, use name to detect duplicates. if possible, use save header
-    // to detect game instead for better management (defer).
-    // file watcher: establish link between all files with the same name(?) and watch for changes on each copy. when one
-    // copy is updated, propagate the change to all other copies. prompt for overwriting one source with another to
-    // avoid data deletion. only perform overwrite if hashes of two files are different
-    // A <----> B
-    // old      new
-    // compare with metadata.age_or_something()
-    // propagate data from new to old by copying into versioned storage area
-    // check if old data is in use (defer)
-    // sort by having save file header checks (defer)
-    // json file managed directory structure (defer)
-    let metadata = std::fs::metadata("/home/alex/Dropbox/rand/Mario & Luigi - Superstar Saga (USA, Australia).gba").unwrap();
-
-    println!("{:?}", metadata.file_type());
 }
 
 fn print_type_of<T>(_: &T) {
@@ -88,7 +48,7 @@ fn file_sha256(path: &str) -> String {
     format!("{:02X?}", hasher.finalize())
 }
 
-fn find_savs(globals: &mut Globals) {
+fn find_savs(tx: &mpsc::Sender<(String, String)>) {
     let walkdir = "/home/alex/Dropbox/rand";
 
     for entry in WalkDir::new(walkdir) .follow_links(true) .into_iter() .filter_map(|e| e.ok()) {
@@ -98,19 +58,18 @@ fn find_savs(globals: &mut Globals) {
         // right now having two files registered copied on top of each other will ping pong back and forth which is why
         // it's important to set up hashing to ensure that files that are currently being tracked aren't inserted into
         // the system as current
-        if f_name.ends_with(".ss1") /* || f_name.ends_with(".ss2") || f_name.ends_with(".ss3") */ {
+        if f_name.ends_with(".ss1") {
             // TODO: this needs to hash on filename and catalog the different versions of the file instead of what it
             // does right now
             let entry = entry.path().to_str().unwrap();
             let res = file_sha256(&entry);
-            // println!("entry  {:?}", entry);
-            // println!("res    {:?}", res);
-            // println!("f_name {:?}", f_name);
-            let inner_map = globals.save_map.entry(f_name.to_string()).or_insert_with(||{Savedata{filemap: HashMap::new()}});
-            inner_map.filemap.insert(entry.to_string(), res.to_string());
+            // let inner_map = save_map.entry(f_name.to_string()).or_insert_with(||{Savedata{filemap: HashMap::new()}});
+            // inner_map.filemap.insert(entry.to_string(), res.to_string());
+            tx.send((entry.clone().to_string(), res.clone().to_string()));
         }
     }
 }
+
 
 fn setup_watch(globals: &mut Globals) {
     // https://stackoverflow.com/a/45724688
@@ -124,14 +83,22 @@ fn setup_watch(globals: &mut Globals) {
     }
 }
 
-fn listen(globals: &mut Globals) {
+fn listen(globals: &mut Globals, rx: mpsc::Receiver<(String, String)>) {
+    let mut save_map: HashMap<String, Savedata> = HashMap::new();
+
+    // println!("RXRXRXR {:?}", rx.recv().unwrap());
+    for received in rx {
+        println!("RXRXRXRRX {:?}", received);
+    }
+
+
     loop {
         match globals.rx.recv() {
             Ok(event) =>
-                match event {
-                    DebouncedEvent::Write(p) | DebouncedEvent::Chmod(p) => {
-                        let p = &p.into_os_string().into_string().unwrap();
-                        // println!("Update: {:?}", p);
+            match event {
+                DebouncedEvent::Write(p) | DebouncedEvent::Chmod(p) => {
+                    let p = &p.into_os_string().into_string().unwrap();
+                    // println!("Update: {:?}", p);
                         let new_hash = file_sha256(p);
                         // println!("new_hash: {:?}", new_hash);
                         let path_split: Vec<&str> = p.split("/").collect();
@@ -171,9 +138,9 @@ fn setup() {
 }
 
 fn create_globals() -> Globals {
-    let (tx, rx) = channel();
+    let (tx, rx) = mpsc::channel();
     let mut watcher = watcher(tx, Duration::from_secs(1)).unwrap();
-    let mut save_map = HashMap::new();
+    let mut save_map: HashMap<String, Savedata> = HashMap::new();
     let globals = Globals {
         rx: rx,
         watcher: watcher,
@@ -182,15 +149,78 @@ fn create_globals() -> Globals {
     globals
 }
 
+/*
+does initial scan
+yes file i/o
+finds watch/unwatch events (listens to watcher)
+sends file events to thread 1
+*/
+fn save_scanner(file_scan_rx: mpsc::Receiver<notify::DebouncedEvent>,
+                file_add_tx:  mpsc::Sender<(String, String)>) {
+    find_savs(&file_add_tx);
+    loop {
+        match file_scan_rx.recv() {
+            Ok(event) => match event {
+                DebouncedEvent::Write(p) | DebouncedEvent::Chmod(p) => {
+                }
+                DebouncedEvent::NoticeWrite(p) => println!("NoticeWrite {:?}", p),
+                DebouncedEvent::Create(p) => println!("Create {:?}", p),
+                DebouncedEvent::Remove(p) => println!("Remove {:?}", p),
+                DebouncedEvent::NoticeRemove(p)  => println!("NoticeRemove {:?}", p),
+                DebouncedEvent::Rename(a, b) => println!("Rename {:?} -> {:?}", a, b),
+                _ => (),
+           },
+           Err(e) => println!("watch error: {:?}", e),
+        };
+    }
+}
+
+/*
+responds to file update events
+no file i/o
+owns save_map
+writes to watcher
+decides when savegame parity should be updated
+*/
+fn save_watcher(file_scan_tx: std::sync::mpsc::Sender<notify::DebouncedEvent>,
+                file_add_rx:  std::sync::mpsc::Receiver<(String, String)>,) {
+
+    let mut watcher = watcher(file_scan_tx, Duration::from_secs(1)).unwrap();
+    loop {
+        let (entry, res) = file_add_rx.recv().unwrap();
+        println!("{:?} {:?}", entry, res);
+        // match file_add_rx.recv() {
+            // let inner_map = save_map.entry(f_name.to_string()).or_insert_with(||{Savedata{filemap: HashMap::new()}});
+            // inner_map.filemap.insert(entry.to_string(), res.to_string());
+        // }
+
+    }
+}
+
 fn main() {
+    /*
+    start listener, wait for it to finish init (prob actually dont need to wait since channel has finished init)
+    crawl directories, send messages to listener
+    */
     let mut globals = create_globals();
-    create_globals();
+    let (file_scan_tx, file_scan_rx) = mpsc::channel();
+    let (file_add_tx,  file_add_rx) =  mpsc::channel();
     setup();
-    find_savs(&mut globals);
-    setup_watch(&mut globals);
-    let handle = thread::spawn(move || {
-        listen(&mut globals);
+    // find_savs(&mut globals, tx);
+    // setup_watch(&mut globals);
+    // let handle = thread::spawn(move || {
+    //     listen(&mut globals, rx);
+    // });
+    // handle.join().unwrap();
+
+    print_type_of(&file_scan_tx);
+    let save_scanner_handle = thread::spawn(move || {
+        save_scanner(file_scan_rx, file_add_tx);
     });
-    handle.join().unwrap();
-    // globals.save_map.get("*fname").unwrap();
+    save_scanner_handle.join().unwrap();
+
+    let save_watcher_handle = thread::spawn(move || {
+        save_watcher(file_scan_tx, file_add_rx);
+    });
+    save_watcher_handle.join().unwrap();
 }
