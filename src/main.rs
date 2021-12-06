@@ -48,7 +48,7 @@ fn file_sha256(path: &str) -> String {
     format!("{:02X?}", hasher.finalize())
 }
 
-fn find_savs(tx: &mpsc::Sender<(String, String)>) {
+fn find_savs(file_add_tx: &mpsc::Sender<(String, String)>) {
     let walkdir = "/home/alex/Dropbox/rand";
 
     for entry in WalkDir::new(walkdir) .follow_links(true) .into_iter() .filter_map(|e| e.ok()) {
@@ -62,14 +62,14 @@ fn find_savs(tx: &mpsc::Sender<(String, String)>) {
             // TODO: this needs to hash on filename and catalog the different versions of the file instead of what it
             // does right now
             let entry = entry.path().to_str().unwrap();
+            println!("file_add_tx -> {:?}", entry);
             let res = file_sha256(&entry);
             // let inner_map = save_map.entry(f_name.to_string()).or_insert_with(||{Savedata{filemap: HashMap::new()}});
             // inner_map.filemap.insert(entry.to_string(), res.to_string());
-            tx.send((entry.clone().to_string(), res.clone().to_string()));
+            file_add_tx.send((entry.clone().to_string(), res.clone().to_string()));
         }
     }
 }
-
 
 fn setup_watch(globals: &mut Globals) {
     // https://stackoverflow.com/a/45724688
@@ -90,7 +90,6 @@ fn listen(globals: &mut Globals, rx: mpsc::Receiver<(String, String)>) {
     for received in rx {
         println!("RXRXRXRRX {:?}", received);
     }
-
 
     loop {
         match globals.rx.recv() {
@@ -134,6 +133,8 @@ fn listen(globals: &mut Globals, rx: mpsc::Receiver<(String, String)>) {
 
 fn setup() {
     let home_dir = "/home/alex/Dropbox/sync";
+    fs::create_dir_all(&home_dir).unwrap();
+    let home_dir = "/home/alex/Dropbox/rand";
     fs::create_dir_all(&home_dir).unwrap();
 }
 
@@ -184,16 +185,10 @@ decides when savegame parity should be updated
 */
 fn save_watcher(file_scan_tx: std::sync::mpsc::Sender<notify::DebouncedEvent>,
                 file_add_rx:  std::sync::mpsc::Receiver<(String, String)>,) {
-
     let mut watcher = watcher(file_scan_tx, Duration::from_secs(1)).unwrap();
     loop {
         let (entry, res) = file_add_rx.recv().unwrap();
         println!("{:?} {:?}", entry, res);
-        // match file_add_rx.recv() {
-            // let inner_map = save_map.entry(f_name.to_string()).or_insert_with(||{Savedata{filemap: HashMap::new()}});
-            // inner_map.filemap.insert(entry.to_string(), res.to_string());
-        // }
-
     }
 }
 
@@ -217,10 +212,10 @@ fn main() {
     let save_scanner_handle = thread::spawn(move || {
         save_scanner(file_scan_rx, file_add_tx);
     });
-    save_scanner_handle.join().unwrap();
-
     let save_watcher_handle = thread::spawn(move || {
         save_watcher(file_scan_tx, file_add_rx);
     });
+
+    save_scanner_handle.join().unwrap();
     save_watcher_handle.join().unwrap();
 }
