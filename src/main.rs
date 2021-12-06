@@ -48,7 +48,7 @@ fn file_sha256(path: &str) -> String {
     format!("{:02X?}", hasher.finalize())
 }
 
-fn find_savs(file_add_tx: &mpsc::Sender<(String, String)>) {
+fn find_savs(file_add_tx: &mpsc::Sender<String>) {
     let walkdir = "/home/alex/Dropbox/rand";
 
     for entry in WalkDir::new(walkdir) .follow_links(true) .into_iter() .filter_map(|e| e.ok()) {
@@ -63,10 +63,9 @@ fn find_savs(file_add_tx: &mpsc::Sender<(String, String)>) {
             // does right now
             let entry = entry.path().to_str().unwrap();
             println!("file_add_tx -> {:?}", entry);
-            let res = file_sha256(&entry);
             // let inner_map = save_map.entry(f_name.to_string()).or_insert_with(||{Savedata{filemap: HashMap::new()}});
             // inner_map.filemap.insert(entry.to_string(), res.to_string());
-            file_add_tx.send((entry.clone().to_string(), res.clone().to_string()));
+            file_add_tx.send(entry.clone().to_string());
         }
     }
 }
@@ -83,7 +82,26 @@ fn setup_watch(globals: &mut Globals) {
     }
 }
 
-fn listen(globals: &mut Globals, rx: mpsc::Receiver<(String, String)>) {
+fn setup() {
+    let home_dir = "/home/alex/Dropbox/sync";
+    fs::create_dir_all(&home_dir).unwrap();
+    let home_dir = "/home/alex/Dropbox/rand";
+    fs::create_dir_all(&home_dir).unwrap();
+}
+
+fn create_globals() -> Globals {
+    let (tx, rx) = mpsc::channel();
+    let mut watcher = watcher(tx, Duration::from_secs(1)).unwrap();
+    let mut save_map: HashMap<String, Savedata> = HashMap::new();
+    let globals = Globals {
+        rx: rx,
+        watcher: watcher,
+        save_map: save_map,
+    };
+    globals
+}
+
+fn listen(globals: &mut Globals, rx: mpsc::Receiver<String>) {
     let mut save_map: HashMap<String, Savedata> = HashMap::new();
 
     // println!("RXRXRXR {:?}", rx.recv().unwrap());
@@ -131,38 +149,22 @@ fn listen(globals: &mut Globals, rx: mpsc::Receiver<(String, String)>) {
     }
 }
 
-fn setup() {
-    let home_dir = "/home/alex/Dropbox/sync";
-    fs::create_dir_all(&home_dir).unwrap();
-    let home_dir = "/home/alex/Dropbox/rand";
-    fs::create_dir_all(&home_dir).unwrap();
-}
-
-fn create_globals() -> Globals {
-    let (tx, rx) = mpsc::channel();
-    let mut watcher = watcher(tx, Duration::from_secs(1)).unwrap();
-    let mut save_map: HashMap<String, Savedata> = HashMap::new();
-    let globals = Globals {
-        rx: rx,
-        watcher: watcher,
-        save_map: save_map,
-    };
-    globals
-}
-
 /*
 does initial scan
-yes file i/o
-finds watch/unwatch events (listens to watcher)
+performs file copy back and forth
+decides upon watch/unwatch events (only)
 sends file events to thread 1
 */
 fn save_scanner(file_scan_rx: mpsc::Receiver<notify::DebouncedEvent>,
-                file_add_tx:  mpsc::Sender<(String, String)>) {
+                file_add_tx:  mpsc::Sender<String>) {
     find_savs(&file_add_tx);
     loop {
         match file_scan_rx.recv() {
             Ok(event) => match event {
                 DebouncedEvent::Write(p) | DebouncedEvent::Chmod(p) => {
+                    println!("{:?}", p);
+                    let entry = p.to_str().unwrap();
+                    file_add_tx.send(entry.clone().to_string());
                 }
                 DebouncedEvent::NoticeWrite(p) => println!("NoticeWrite {:?}", p),
                 DebouncedEvent::Create(p) => println!("Create {:?}", p),
@@ -184,11 +186,14 @@ writes to watcher
 decides when savegame parity should be updated
 */
 fn save_watcher(file_scan_tx: std::sync::mpsc::Sender<notify::DebouncedEvent>,
-                file_add_rx:  std::sync::mpsc::Receiver<(String, String)>,) {
+                file_add_rx:  std::sync::mpsc::Receiver<String>,) {
     let mut watcher = watcher(file_scan_tx, Duration::from_secs(1)).unwrap();
+    let mut save_map: HashMap<String, Savedata> = HashMap::new();
     loop {
-        let (entry, res) = file_add_rx.recv().unwrap();
+        let entry = file_add_rx.recv().unwrap();
+        let res = file_sha256(&entry);
         println!("{:?} {:?}", entry, res);
+        watcher.watch(&entry, RecursiveMode::Recursive).unwrap();
     }
 }
 
@@ -197,16 +202,9 @@ fn main() {
     start listener, wait for it to finish init (prob actually dont need to wait since channel has finished init)
     crawl directories, send messages to listener
     */
-    let mut globals = create_globals();
     let (file_scan_tx, file_scan_rx) = mpsc::channel();
     let (file_add_tx,  file_add_rx) =  mpsc::channel();
     setup();
-    // find_savs(&mut globals, tx);
-    // setup_watch(&mut globals);
-    // let handle = thread::spawn(move || {
-    //     listen(&mut globals, rx);
-    // });
-    // handle.join().unwrap();
 
     print_type_of(&file_scan_tx);
     let save_scanner_handle = thread::spawn(move || {
