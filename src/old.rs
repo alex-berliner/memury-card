@@ -100,3 +100,27 @@ fn listen(globals: &mut Globals, rx: mpsc::Receiver<String>) {
         };
     }
 }
+
+fn setup_watch(globals: &mut Globals) {
+    // https://stackoverflow.com/a/45724688
+    for (ki, vi) in globals.save_map.iter() {
+        let hs = globals.save_map.get(ki).unwrap();
+        for (kj, vj) in &hs.filemap {
+            // https://docs.rs/notify/4.0.17/notify/trait.Watcher.html#tymethod.unwatch
+            &globals.watcher.watch(kj, RecursiveMode::Recursive).unwrap();
+            println!("Watching {:?}", kj);
+        }
+    }
+}
+
+fn create_globals() -> Globals {
+    let (tx, rx) = mpsc::channel();
+    let mut watcher = watcher(tx, Duration::from_secs(1)).unwrap();
+    let mut save_map: HashMap<String, Savedata> = HashMap::new();
+    let globals = Globals {
+        rx: rx,
+        watcher: watcher,
+        save_map: save_map,
+    };
+    globals
+}

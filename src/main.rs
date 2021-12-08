@@ -45,6 +45,7 @@ fn print_type_of<T>(_: &T) {
 
 fn file_sha256(path: &str) -> String {
     // TODO: check file exists
+    // TODO: make better hash format
     let bytes = std::fs::read(path).unwrap();
     let mut hasher = Sha256::new();
     hasher.update(bytes);
@@ -58,29 +59,10 @@ fn find_savs(file_add_tx: &mpsc::Sender<String>) {
         let f_name = entry.file_name().to_string_lossy();
         let sec = entry.metadata().unwrap().modified().unwrap();
 
-        // right now having two files registered copied on top of each other will ping pong back and forth which is why
-        // it's important to set up hashing to ensure that files that are currently being tracked aren't inserted into
-        // the system as current
         if f_name.ends_with(".txt") {
-            // TODO: this needs to hash on filename and catalog the different versions of the file instead of what it
-            // does right now
             let entry = entry.path().to_str().unwrap();
             println!("file_add_tx -> {:?}", entry);
-            // let inner_map = save_map.entry(f_name.to_string()).or_insert_with(||{Savedata{filemap: HashMap::new()}});
-            // inner_map.filemap.insert(entry.to_string(), res.to_string());
-            file_add_tx.send(entry.clone().to_string());
-        }
-    }
-}
-
-fn setup_watch(globals: &mut Globals) {
-    // https://stackoverflow.com/a/45724688
-    for (ki, vi) in globals.save_map.iter() {
-        let hs = globals.save_map.get(ki).unwrap();
-        for (kj, vj) in &hs.filemap {
-            // https://docs.rs/notify/4.0.17/notify/trait.Watcher.html#tymethod.unwatch
-            &globals.watcher.watch(kj, RecursiveMode::Recursive).unwrap();
-            println!("Watching {:?}", kj);
+            file_add_tx.send(entry.to_string());
         }
     }
 }
@@ -88,18 +70,6 @@ fn setup_watch(globals: &mut Globals) {
 fn setup() {
     fs::create_dir_all(COPY_PATH).unwrap();
     fs::create_dir_all(EMU_PATH).unwrap();
-}
-
-fn create_globals() -> Globals {
-    let (tx, rx) = mpsc::channel();
-    let mut watcher = watcher(tx, Duration::from_secs(1)).unwrap();
-    let mut save_map: HashMap<String, Savedata> = HashMap::new();
-    let globals = Globals {
-        rx: rx,
-        watcher: watcher,
-        save_map: save_map,
-    };
-    globals
 }
 
 /*
@@ -147,12 +117,12 @@ fn save_watcher(file_scan_tx: std::sync::mpsc::Sender<notify::DebouncedEvent>,
         let add_path = file_add_rx.recv().unwrap();
         let add_hash = file_sha256(&add_path);
         println!("{:?} {:?}", add_path, add_hash);
-        let path_split: Vec<&str> = add_path.split("/").collect();
-        let fname = path_split.last().unwrap();
-        let inner_map = save_map.entry(fname.to_string()).or_insert_with(||{Savedata{filemap: HashMap::new()}});
-        inner_map.filemap.entry(add_path.clone()).or_insert(add_hash.to_string());
-        println!("out: {:?} in: {:?}", add_path, inner_map.filemap.get(&add_path).unwrap());
-        let hs = save_map.get(*fname).unwrap();
+        // let path_split: Vec<&str> = add_path.split("/").collect();
+        // let fname = path_split.last().unwrap();
+        // let inner_map = save_map.entry(fname.to_string()).or_insert_with(||{Savedata{filemap: HashMap::new()}});
+        // inner_map.filemap.entry(add_path.clone()).or_insert(add_hash.to_string());
+        // println!("out: {:?} in: {:?}", add_path, inner_map.filemap.get(&add_path).unwrap());
+        // let hs = save_map.get(*fname).unwrap();
         // TODO: a file update is n^2 because it triggers "no copy" checks on each other file. can be
         // fixed by caching the hash of the last saved value and not doing anything if the hash is the
         // same
