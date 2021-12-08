@@ -26,9 +26,6 @@ use std::fs;
 use std::collections::{HashMap, HashSet};
 use std::thread;
 
-static COPY_PATH: &str = "/home/alex/Dropbox/sync";
-static EMU_PATH: &str =  "/home/alex/Dropbox/rand";
-
 struct Savedata {
     filemap: HashMap<String, String>,
 }
@@ -51,25 +48,8 @@ fn file_sha256(path: &str) -> String {
     format!("{:02X?}", hasher.finalize())
 }
 
-fn setup() {
-    fs::create_dir_all(&COPY_PATH).unwrap();
-    fs::create_dir_all(&EMU_PATH).unwrap();
-}
-
-fn create_globals() -> Globals {
-    let (tx, rx) = mpsc::channel();
-    let mut watcher = watcher(tx, Duration::from_secs(1)).unwrap();
-    let mut save_map: HashMap<String, Savedata> = HashMap::new();
-    let globals = Globals {
-        rx: rx,
-        watcher: watcher,
-        save_map: save_map,
-    };
-    globals
-}
-
-fn find_savs(file_add_tx: &mpsc::Sender<WatchOp>) {
-    let walkdir = EMU_PATH;
+fn find_savs(file_add_tx: &mpsc::Sender<String>) {
+    let walkdir = "/home/alex/Dropbox/rand";
 
     for entry in WalkDir::new(walkdir) .follow_links(true) .into_iter() .filter_map(|e| e.ok()) {
         let f_name = entry.file_name().to_string_lossy();
@@ -85,8 +65,87 @@ fn find_savs(file_add_tx: &mpsc::Sender<WatchOp>) {
             println!("file_add_tx -> {:?}", entry);
             // let inner_map = save_map.entry(f_name.to_string()).or_insert_with(||{Savedata{filemap: HashMap::new()}});
             // inner_map.filemap.insert(entry.to_string(), res.to_string());
-            file_add_tx.send(WatchOp::Watch(entry.clone().to_string()));
+            file_add_tx.send(entry.clone().to_string());
         }
+    }
+}
+
+fn setup_watch(globals: &mut Globals) {
+    // https://stackoverflow.com/a/45724688
+    for (ki, vi) in globals.save_map.iter() {
+        let hs = globals.save_map.get(ki).unwrap();
+        for (kj, vj) in &hs.filemap {
+            // https://docs.rs/notify/4.0.17/notify/trait.Watcher.html#tymethod.unwatch
+            &globals.watcher.watch(kj, RecursiveMode::Recursive).unwrap();
+            println!("Watching {:?}", kj);
+        }
+    }
+}
+
+fn setup() {
+    let home_dir = "/home/alex/Dropbox/sync";
+    fs::create_dir_all(&home_dir).unwrap();
+    let home_dir = "/home/alex/Dropbox/rand";
+    fs::create_dir_all(&home_dir).unwrap();
+}
+
+fn create_globals() -> Globals {
+    let (tx, rx) = mpsc::channel();
+    let mut watcher = watcher(tx, Duration::from_secs(1)).unwrap();
+    let mut save_map: HashMap<String, Savedata> = HashMap::new();
+    let globals = Globals {
+        rx: rx,
+        watcher: watcher,
+        save_map: save_map,
+    };
+    globals
+}
+
+fn listen(globals: &mut Globals, rx: mpsc::Receiver<String>) {
+    let mut save_map: HashMap<String, Savedata> = HashMap::new();
+
+    // println!("RXRXRXR {:?}", rx.recv().unwrap());
+    for received in rx {
+        println!("RXRXRXRRX {:?}", received);
+    }
+
+    loop {
+        match globals.rx.recv() {
+            Ok(event) =>
+            match event {
+                DebouncedEvent::Write(p) | DebouncedEvent::Chmod(p) => {
+                    let p = &p.into_os_string().into_string().unwrap();
+                    // println!("Update: {:?}", p);
+                        let new_hash = file_sha256(p);
+                        // println!("new_hash: {:?}", new_hash);
+                        let path_split: Vec<&str> = p.split("/").collect();
+                        let fname = path_split.last().unwrap();
+                        let hs = globals.save_map.get(*fname).unwrap();
+                        // TODO: a file update is n^2 because it triggers "no copy" checks on each other file. can be
+                        // fixed by caching the hash of the last saved value and not doing anything if the hash is the
+                        // same
+                        for (key, value) in &hs.filemap {
+                            // println!("------------> {} / {}", key, value);
+                            let real_hash = file_sha256(key);
+                            // println!("real hash: {:?}", real_hash);
+                            if new_hash != real_hash {
+                                println!("must copy\n{:?}\n{:?}", new_hash, real_hash);
+                                println!("{:?}", key);
+                                std::fs::copy(&p, key);
+                            } else {
+                                println!("no copy");
+                            }
+                        }
+                    }
+                    DebouncedEvent::NoticeWrite(p) => println!("NoticeWrite {:?}", p),
+                    DebouncedEvent::Create(p) => println!("Create {:?}", p),
+                    DebouncedEvent::Remove(p) => println!("Remove {:?}", p),
+                    DebouncedEvent::NoticeRemove(p)  => println!("NoticeRemove {:?}", p),
+                    DebouncedEvent::Rename(a, b) => println!("Rename {:?} -> {:?}", a, b),
+                    _ => (),
+                },
+           Err(e) => println!("watch error: {:?}", e),
+        };
     }
 }
 
@@ -97,7 +156,7 @@ decides upon watch/unwatch events (only)
 sends file events to thread 1
 */
 fn save_scanner(file_scan_rx: mpsc::Receiver<notify::DebouncedEvent>,
-                file_add_tx:  mpsc::Sender<WatchOp>) {
+                file_add_tx:  mpsc::Sender<String>) {
     find_savs(&file_add_tx);
     loop {
         match file_scan_rx.recv() {
@@ -105,7 +164,7 @@ fn save_scanner(file_scan_rx: mpsc::Receiver<notify::DebouncedEvent>,
                 DebouncedEvent::Write(p) | DebouncedEvent::Chmod(p) => {
                     println!("{:?}", p);
                     let entry = p.to_str().unwrap();
-                    file_add_tx.send(WatchOp::Watch(entry.clone().to_string()));
+                    file_add_tx.send(entry.clone().to_string());
                 }
                 DebouncedEvent::NoticeWrite(p) => println!("NoticeWrite {:?}", p),
                 DebouncedEvent::Create(p) => println!("Create {:?}", p),
@@ -118,10 +177,7 @@ fn save_scanner(file_scan_rx: mpsc::Receiver<notify::DebouncedEvent>,
         };
     }
 }
-enum WatchOp {
-    Watch(String),
-    Unwatch(String),
-}
+
 /*
 responds to file update events
 no file i/o
@@ -130,21 +186,14 @@ writes to watcher
 decides when savegame parity should be updated
 */
 fn save_watcher(file_scan_tx: std::sync::mpsc::Sender<notify::DebouncedEvent>,
-                file_add_rx:  std::sync::mpsc::Receiver<WatchOp>,) {
+                file_add_rx:  std::sync::mpsc::Receiver<String>,) {
     let mut watcher = watcher(file_scan_tx, Duration::from_secs(1)).unwrap();
     let mut save_map: HashMap<String, Savedata> = HashMap::new();
     loop {
-        let watch = file_add_rx.recv().unwrap();
-        match watch {
-            WatchOp::Watch(entry) => {
-                let res = file_sha256(&entry);
-                println!("{:?} {:?}", entry, res);
-                watcher.watch(&entry, RecursiveMode::Recursive).unwrap();
-            },
-            WatchOp::Unwatch(entry) => {
-                watcher.unwatch(&entry).unwrap();
-            }
-        }
+        let entry = file_add_rx.recv().unwrap();
+        let res = file_sha256(&entry);
+        println!("{:?} {:?}", entry, res);
+        watcher.watch(&entry, RecursiveMode::Recursive).unwrap();
     }
 }
 
