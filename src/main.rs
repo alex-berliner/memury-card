@@ -144,12 +144,15 @@ fn save_watcher(file_scan_tx: std::sync::mpsc::Sender<notify::DebouncedEvent>,
     let mut watcher = watcher(file_scan_tx, Duration::from_secs(1)).unwrap();
     let mut save_map: HashMap<String, Savedata> = HashMap::new();
     loop {
-        let entry = file_add_rx.recv().unwrap();
-        let new_hash = file_sha256(&entry);
-        println!("{:?} {:?}", entry, new_hash);
-        let path_split: Vec<&str> = entry.split("/").collect();
+        let add_path = file_add_rx.recv().unwrap();
+        let add_hash = file_sha256(&add_path);
+        println!("{:?} {:?}", add_path, add_hash);
+        let path_split: Vec<&str> = add_path.split("/").collect();
         let fname = path_split.last().unwrap();
-        // let hs = save_map.get(*fname).unwrap();
+        let inner_map = save_map.entry(fname.to_string()).or_insert_with(||{Savedata{filemap: HashMap::new()}});
+        inner_map.filemap.entry(add_path.clone()).or_insert(add_hash.to_string());
+        println!("out: {:?} in: {:?}", add_path, inner_map.filemap.get(&add_path).unwrap());
+        let hs = save_map.get(*fname).unwrap();
         // TODO: a file update is n^2 because it triggers "no copy" checks on each other file. can be
         // fixed by caching the hash of the last saved value and not doing anything if the hash is the
         // same
@@ -157,10 +160,10 @@ fn save_watcher(file_scan_tx: std::sync::mpsc::Sender<notify::DebouncedEvent>,
         //     // println!("------------> {} / {}", key, value);
         //     let real_hash = file_sha256(key);
         //     // println!("real hash: {:?}", real_hash);
-        //     if new_hash != real_hash {
-        //         println!("must copy\n{:?}\n{:?}", new_hash, real_hash);
+        //     if add_hash != real_hash {
+        //         println!("must copy\n{:?}\n{:?}", add_hash, real_hash);
         //         println!("{:?}", key);
-        //         std::fs::copy(&entry, key);
+        //         std::fs::copy(&add_path, key);
         //     } else {
         //         println!("no copy");
         //     }
