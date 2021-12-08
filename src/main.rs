@@ -5,14 +5,18 @@ on startup/periodically/continuously/when responding to events crawl monitored d
 has in their save directories that should be copied into the storage area
 two saves with the same name will be kept in sync with the program copying the more recent save on top of the old save.
 
-important detour: threading. currently the listen() function isn't threaded which will probably become a problem if I
-want the program to do more things or just handle different operations at the same time like updating entries while
-continuing to listen for savegame changes. so listen(), which for savegames looks for updates and maintains parity must
-be threaded, along with, in the future, the things that will be manipulating which savegames are being watched, ui, idk.
-globals.watcher stores a path to every file currently being kept track of, as does globals.save_map. A channel is
-probably the best way to funnel updates to the watcher, but do more things need access to save_map besides just the one
-thread? probably not, if this were a module it would be just used for maintaining parity and it could probably be stored
-in the thread.
+resolution mechanism: how should the file of record be determined? people will not like it if i blast away their save
+files of the same name in different folders on the first run. there may even be games where the same name is used in
+different folders to refer to different saves. also during startup it should probably take the date of all the files and
+use the last modified and copy that to all the other attached files. "attachment" is going to have to be determined
+somehow and it's not simple. i could let the user define where different files should be attached or the attachment
+scheme for certain directories. a principle for this program is centralized management so they could be able to declare
+the type of attachment as they define what directory to look for saves in
+
+high configuribility: up until now I've been proofing things out but a lot of how I want this program to work is outside
+of code. I want to build this so that it's easily manageable from configuration files, not inside a horrible form-driven
+program. Directories to manage and their management style will be pulled from json file(s) that define where the program
+should look, for what it should look, how it should resolve save conflicts, etc.
 
 note: are there any common file systems that don't use last modified?
 */
@@ -62,7 +66,7 @@ fn find_savs(file_add_tx: &mpsc::Sender<String>) {
         if f_name.ends_with(".txt") {
             let entry = entry.path().to_str().unwrap();
             println!("file_add_tx -> {:?}", entry);
-            file_add_tx.send(entry.to_string());
+            file_add_tx.send(entry.clone().to_string());
         }
     }
 }
@@ -80,13 +84,13 @@ sends file events to thread 1
 */
 // say this is done? just looks for file updates and informs save watcher
 fn save_scanner(file_scan_rx: mpsc::Receiver<notify::DebouncedEvent>,
-                file_add_tx:  mpsc::Sender<String>) {
+                file_add_tx:  mpsc::Sender<String>) -> Result<()> {
     find_savs(&file_add_tx);
     loop {
         match file_scan_rx.recv() {
             Ok(event) => match event {
                 DebouncedEvent::Write(p) | DebouncedEvent::Chmod(p) => {
-                    println!("{:?}", p);
+                    // println!("{:?}", p);
                     let entry = p.to_str().unwrap();
                     file_add_tx.send(entry.clone().to_string());
                 }
@@ -115,33 +119,81 @@ fn save_watcher(file_scan_tx: std::sync::mpsc::Sender<notify::DebouncedEvent>,
     let mut save_map: HashMap<String, Savedata> = HashMap::new();
     loop {
         let add_path = file_add_rx.recv().unwrap();
+        watcher.watch(&add_path, RecursiveMode::Recursive).unwrap();
         let add_hash = file_sha256(&add_path);
-        println!("{:?} {:?}", add_path, add_hash);
-        // let path_split: Vec<&str> = add_path.split("/").collect();
-        // let fname = path_split.last().unwrap();
-        // let inner_map = save_map.entry(fname.to_string()).or_insert_with(||{Savedata{filemap: HashMap::new()}});
-        // inner_map.filemap.entry(add_path.clone()).or_insert(add_hash.to_string());
+        // println!("{:?} {:?}", add_path, add_hash);
+        let path_split: Vec<&str> = add_path.split("/").collect();
+        let fname = path_split.last().unwrap();
+        let inner_map = save_map.entry(fname.to_string()).or_insert_with(||{Savedata{filemap: HashMap::new()}});
+        inner_map.filemap.entry(add_path.clone()).or_insert(add_hash.to_string());
         // println!("out: {:?} in: {:?}", add_path, inner_map.filemap.get(&add_path).unwrap());
-        // let hs = save_map.get(*fname).unwrap();
+        let hs = save_map.get(*fname).unwrap();
         // TODO: a file update is n^2 because it triggers "no copy" checks on each other file. can be
         // fixed by caching the hash of the last saved value and not doing anything if the hash is the
         // same
         // for (key, value) in &hs.filemap {
-        //     // println!("------------> {} / {}", key, value);
         //     let real_hash = file_sha256(key);
-        //     // println!("real hash: {:?}", real_hash);
         //     if add_hash != real_hash {
-        //         println!("must copy\n{:?}\n{:?}", add_hash, real_hash);
-        //         println!("{:?}", key);
+        //         println!("update {:?} -> {:?}", add_path, key);
         //         std::fs::copy(&add_path, key);
         //     } else {
         //         println!("no copy");
         //     }
         // }
-// watcher.watch(&entry, RecursiveMode::Recursive).unwrap();
         // watcher.unwatch(&entry).unwrap();
         // if file is in save_map, do watch add, else do watch remove
     }
+}
+
+use serde::{Deserialize, Serialize};
+use serde_json::Result;
+
+#[derive(Serialize, Deserialize)]
+struct Person {
+    name: String,
+    age: u8,
+    phones: Vec<String>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct SaveDef {
+    dir: String,
+    resolution_strategy: String,
+    // search_depth: 0,1,2,-1(inf)
+
+    filetypes: Vec<String>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct SaveDefs {
+    save_areas: Vec<SaveDef>,
+}
+
+fn gen_sample_json() -> Result<()> {
+    let bytes = std::fs::read_to_string("/home/alex/Code/savesync/testfiles/samplej.json").unwrap();
+    let ss: SaveDefs = serde_json::from_str(&bytes)?;
+    println!("{:?}", ss.save_areas[0].dir);
+
+    // // Do things just like with any other Rust data structure.
+    // println!("Please call {} at the number {}", p.name, p.phones[0]);
+    // let j = serde_json::to_string(&p)?;
+    // println!("{}", j);
+    // let p: Person = serde_json::from_str(&j)?;
+/*     let mut s = SaveDef {
+        dir: "hji".to_string(),
+        resolution_strategy: "choose_latest".to_string(),
+        filetypes: vec!["ss1".to_string(), "txt".to_string(),],
+    };
+
+    let mut ss = SaveDefs {
+        save_areas: vec![s],
+    }; */
+
+    let j = serde_json::to_string_pretty(&ss)?;
+    println!("{}", j);
+
+    // Print, write to a file, or send to an HTTP server.
+    Ok(())
 }
 
 fn main() {
@@ -149,11 +201,11 @@ fn main() {
     start listener, wait for it to finish init (prob actually dont need to wait since channel has finished init)
     crawl directories, send messages to listener
     */
+    gen_sample_json().unwrap();
     let (file_scan_tx, file_scan_rx) = mpsc::channel();
     let (file_add_tx,  file_add_rx) =  mpsc::channel();
     setup();
 
-    print_type_of(&file_scan_tx);
     let save_scanner_handle = thread::spawn(move || {
         save_scanner(file_scan_rx, file_add_tx);
     });

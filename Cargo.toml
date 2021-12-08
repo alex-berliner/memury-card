@@ -13,3 +13,5 @@ block-buffer = "0.9"
 opaque-debug = "0.3"
 cfg-if = "1.0"
 walkdir = "2"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"

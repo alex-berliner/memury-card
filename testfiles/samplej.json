@@ -1,0 +1,12 @@
+{
+    "save_areas": [
+        {
+            "dir": "hji",
+            "resolution_strategy": "choose_latest",
+            "filetypes": [
+                "ss1",
+                "txt"
+            ]
+        }
+    ]
+}
