@@ -54,3 +54,49 @@ fn channel_experiment() {
     let received = rx.recv().unwrap();
     println!("Got: {}", received.a);
 }
+
+
+fn listen(globals: &mut Globals, rx: mpsc::Receiver<String>) {
+    let mut save_map: HashMap<String, Savedata> = HashMap::new();
+
+    for received in rx {
+        println!("RXRXRXRRX {:?}", received);
+    }
+
+    loop {
+        match globals.rx.recv() {
+            Ok(event) =>
+            match event {
+                DebouncedEvent::Write(p) | DebouncedEvent::Chmod(p) => {
+                    let p = &p.into_os_string().into_string().unwrap();
+                    let new_hash = file_sha256(p);
+                    let path_split: Vec<&str> = p.split("/").collect();
+                    let fname = path_split.last().unwrap();
+                    let hs = globals.save_map.get(*fname).unwrap();
+                    // TODO: a file update is n^2 because it triggers "no copy" checks on each other file. can be
+                    // fixed by caching the hash of the last saved value and not doing anything if the hash is the
+                    // same
+                    for (key, value) in &hs.filemap {
+                        // println!("------------> {} / {}", key, value);
+                        let real_hash = file_sha256(key);
+                        // println!("real hash: {:?}", real_hash);
+                        if new_hash != real_hash {
+                            println!("must copy\n{:?}\n{:?}", new_hash, real_hash);
+                            println!("{:?}", key);
+                            std::fs::copy(&p, key);
+                        } else {
+                            println!("no copy");
+                        }
+                    }
+                }
+                DebouncedEvent::NoticeWrite(p) => println!("NoticeWrite {:?}", p),
+                DebouncedEvent::Create(p) => println!("Create {:?}", p),
+                DebouncedEvent::Remove(p) => println!("Remove {:?}", p),
+                DebouncedEvent::NoticeRemove(p)  => println!("NoticeRemove {:?}", p),
+                DebouncedEvent::Rename(a, b) => println!("Rename {:?} -> {:?}", a, b),
+                _ => (),
+            },
+           Err(e) => println!("watch error: {:?}", e),
+        };
+    }
+}

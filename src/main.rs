@@ -26,6 +26,9 @@ use std::fs;
 use std::collections::{HashMap, HashSet};
 use std::thread;
 
+static COPY_PATH: &str = "/home/alex/Dropbox/sync";
+static EMU_PATH: &str =  "/home/alex/Dropbox/rand";
+
 struct Savedata {
     filemap: HashMap<String, String>,
 }
@@ -58,7 +61,7 @@ fn find_savs(file_add_tx: &mpsc::Sender<String>) {
         // right now having two files registered copied on top of each other will ping pong back and forth which is why
         // it's important to set up hashing to ensure that files that are currently being tracked aren't inserted into
         // the system as current
-        if f_name.ends_with(".ss1") {
+        if f_name.ends_with(".txt") {
             // TODO: this needs to hash on filename and catalog the different versions of the file instead of what it
             // does right now
             let entry = entry.path().to_str().unwrap();
@@ -83,10 +86,8 @@ fn setup_watch(globals: &mut Globals) {
 }
 
 fn setup() {
-    let home_dir = "/home/alex/Dropbox/sync";
-    fs::create_dir_all(&home_dir).unwrap();
-    let home_dir = "/home/alex/Dropbox/rand";
-    fs::create_dir_all(&home_dir).unwrap();
+    fs::create_dir_all(COPY_PATH).unwrap();
+    fs::create_dir_all(EMU_PATH).unwrap();
 }
 
 fn create_globals() -> Globals {
@@ -101,60 +102,13 @@ fn create_globals() -> Globals {
     globals
 }
 
-fn listen(globals: &mut Globals, rx: mpsc::Receiver<String>) {
-    let mut save_map: HashMap<String, Savedata> = HashMap::new();
-
-    // println!("RXRXRXR {:?}", rx.recv().unwrap());
-    for received in rx {
-        println!("RXRXRXRRX {:?}", received);
-    }
-
-    loop {
-        match globals.rx.recv() {
-            Ok(event) =>
-            match event {
-                DebouncedEvent::Write(p) | DebouncedEvent::Chmod(p) => {
-                    let p = &p.into_os_string().into_string().unwrap();
-                    // println!("Update: {:?}", p);
-                        let new_hash = file_sha256(p);
-                        // println!("new_hash: {:?}", new_hash);
-                        let path_split: Vec<&str> = p.split("/").collect();
-                        let fname = path_split.last().unwrap();
-                        let hs = globals.save_map.get(*fname).unwrap();
-                        // TODO: a file update is n^2 because it triggers "no copy" checks on each other file. can be
-                        // fixed by caching the hash of the last saved value and not doing anything if the hash is the
-                        // same
-                        for (key, value) in &hs.filemap {
-                            // println!("------------> {} / {}", key, value);
-                            let real_hash = file_sha256(key);
-                            // println!("real hash: {:?}", real_hash);
-                            if new_hash != real_hash {
-                                println!("must copy\n{:?}\n{:?}", new_hash, real_hash);
-                                println!("{:?}", key);
-                                std::fs::copy(&p, key);
-                            } else {
-                                println!("no copy");
-                            }
-                        }
-                    }
-                    DebouncedEvent::NoticeWrite(p) => println!("NoticeWrite {:?}", p),
-                    DebouncedEvent::Create(p) => println!("Create {:?}", p),
-                    DebouncedEvent::Remove(p) => println!("Remove {:?}", p),
-                    DebouncedEvent::NoticeRemove(p)  => println!("NoticeRemove {:?}", p),
-                    DebouncedEvent::Rename(a, b) => println!("Rename {:?} -> {:?}", a, b),
-                    _ => (),
-                },
-           Err(e) => println!("watch error: {:?}", e),
-        };
-    }
-}
-
 /*
 does initial scan
 performs file copy back and forth
 decides upon watch/unwatch events (only)
 sends file events to thread 1
 */
+// say this is done? just looks for file updates and informs save watcher
 fn save_scanner(file_scan_rx: mpsc::Receiver<notify::DebouncedEvent>,
                 file_add_tx:  mpsc::Sender<String>) {
     find_savs(&file_add_tx);
@@ -191,9 +145,29 @@ fn save_watcher(file_scan_tx: std::sync::mpsc::Sender<notify::DebouncedEvent>,
     let mut save_map: HashMap<String, Savedata> = HashMap::new();
     loop {
         let entry = file_add_rx.recv().unwrap();
-        let res = file_sha256(&entry);
-        println!("{:?} {:?}", entry, res);
-        watcher.watch(&entry, RecursiveMode::Recursive).unwrap();
+        let new_hash = file_sha256(&entry);
+        println!("{:?} {:?}", entry, new_hash);
+        let path_split: Vec<&str> = entry.split("/").collect();
+        let fname = path_split.last().unwrap();
+        // let hs = save_map.get(*fname).unwrap();
+        // TODO: a file update is n^2 because it triggers "no copy" checks on each other file. can be
+        // fixed by caching the hash of the last saved value and not doing anything if the hash is the
+        // same
+        // for (key, value) in &hs.filemap {
+        //     // println!("------------> {} / {}", key, value);
+        //     let real_hash = file_sha256(key);
+        //     // println!("real hash: {:?}", real_hash);
+        //     if new_hash != real_hash {
+        //         println!("must copy\n{:?}\n{:?}", new_hash, real_hash);
+        //         println!("{:?}", key);
+        //         std::fs::copy(&entry, key);
+        //     } else {
+        //         println!("no copy");
+        //     }
+        // }
+// watcher.watch(&entry, RecursiveMode::Recursive).unwrap();
+        // watcher.unwatch(&entry).unwrap();
+        // if file is in save_map, do watch add, else do watch remove
     }
 }
 
