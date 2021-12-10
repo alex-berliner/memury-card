@@ -155,44 +155,32 @@ struct Person {
     phones: Vec<String>,
 }
 
-#[derive(Serialize, Deserialize)]
-struct SaveDef {
-    dir: String,
-    resolution_strategy: String,
-    // search_depth: 0,1,2,-1(inf)
+// #[derive(Serialize, Deserialize)]
+// struct Settings {
+//     cloudsync_path: String,
+// }
 
-    filetypes: Vec<String>,
-}
+// #[derive(Serialize, Deserialize)]
+// struct SaveDef {
+//     enabled: bool,
+//     dir: String,
+//     resolution_strategy: String,
+//     // search_depth: 0,1,2,-1(inf)
 
-#[derive(Serialize, Deserialize)]
-struct SaveDefs {
-    save_areas: Vec<SaveDef>,
-}
+//     filetypes: Vec<String>,
+// }
 
-fn gen_sample_json() -> Result<()> {
+// #[derive(Serialize, Deserialize)]
+// struct SaveDefs {
+//     save_areas: Vec<SaveDef>,
+// }
+
+use serde_json::{Value};
+
+fn json_unstructured() -> Result<()> {
     let bytes = std::fs::read_to_string("/home/alex/Code/savesync/testfiles/samplej.json").unwrap();
-    let ss: SaveDefs = serde_json::from_str(&bytes)?;
-    println!("{:?}", ss.save_areas[0].dir);
-
-    // // Do things just like with any other Rust data structure.
-    // println!("Please call {} at the number {}", p.name, p.phones[0]);
-    // let j = serde_json::to_string(&p)?;
-    // println!("{}", j);
-    // let p: Person = serde_json::from_str(&j)?;
-/*     let mut s = SaveDef {
-        dir: "hji".to_string(),
-        resolution_strategy: "choose_latest".to_string(),
-        filetypes: vec!["ss1".to_string(), "txt".to_string(),],
-    };
-
-    let mut ss = SaveDefs {
-        save_areas: vec![s],
-    }; */
-
-    let j = serde_json::to_string_pretty(&ss)?;
-    println!("{}", j);
-
-    // Print, write to a file, or send to an HTTP server.
+    let v: Value = serde_json::from_str(&bytes)?;
+    println!("{}", v["save_areas"][0]["dir"]);
     Ok(())
 }
 
@@ -201,7 +189,7 @@ fn main() {
     start listener, wait for it to finish init (prob actually dont need to wait since channel has finished init)
     crawl directories, send messages to listener
     */
-    gen_sample_json().unwrap();
+    json_unstructured().unwrap();
     let (file_scan_tx, file_scan_rx) = mpsc::channel();
     let (file_add_tx,  file_add_rx) =  mpsc::channel();
     setup();
