@@ -21,17 +21,26 @@ should look, for what it should look, how it should resolve save conflicts, etc.
 note: are there any common file systems that don't use last modified?
 */
 
-use walkdir::WalkDir;
 use notify::{DebouncedEvent, Watcher, RecursiveMode, watcher};
-use std::sync::mpsc;
-use std::time::{Duration};
+use serde_json::{Result, Value};
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::fs;
 use std::collections::{HashMap, HashSet};
+use std::fs;
+use std::sync::mpsc;
 use std::thread;
+use std::time::Duration;
+use structopt::StructOpt;
+use walkdir::WalkDir;
 
 static COPY_PATH: &str = "/home/alex/Dropbox/sync";
 static EMU_PATH: &str =  "/home/alex/Dropbox/rand";
+
+#[derive(StructOpt)]
+struct Cli {
+    #[structopt(default_value = "settings.json")]
+    settings: std::path::PathBuf,
+}
 
 struct Savedata {
     filemap: HashMap<String, String>,
@@ -145,43 +154,9 @@ fn save_watcher(file_scan_tx: std::sync::mpsc::Sender<notify::DebouncedEvent>,
     }
 }
 
-use serde::{Deserialize, Serialize};
-use serde_json::Result;
-
-#[derive(Serialize, Deserialize)]
-struct Person {
-    name: String,
-    age: u8,
-    phones: Vec<String>,
-}
-
-// #[derive(Serialize, Deserialize)]
-// struct Settings {
-//     cloudsync_path: String,
-// }
-
-// #[derive(Serialize, Deserialize)]
-// struct SaveDef {
-//     enabled: bool,
-//     dir: String,
-//     resolution_strategy: String,
-//     // search_depth: 0,1,2,-1(inf)
-
-//     filetypes: Vec<String>,
-// }
-
-// #[derive(Serialize, Deserialize)]
-// struct SaveDefs {
-//     save_areas: Vec<SaveDef>,
-// }
-
-use serde_json::{Value};
-
-fn json_unstructured() -> Result<()> {
-    let bytes = std::fs::read_to_string("/home/alex/Code/savesync/testfiles/samplej.json").unwrap();
-    let v: Value = serde_json::from_str(&bytes)?;
-    println!("{}", v["save_areas"][0]["dir"]);
-    Ok(())
+fn parse_args(p: &std::path::PathBuf) -> Result<Value> {
+    let bytes = std::fs::read_to_string(p).unwrap();
+    serde_json::from_str(&bytes)
 }
 
 fn main() {
@@ -189,9 +164,13 @@ fn main() {
     start listener, wait for it to finish init (prob actually dont need to wait since channel has finished init)
     crawl directories, send messages to listener
     */
-    json_unstructured().unwrap();
+    let args = Cli::from_args();
+    let parse = parse_args(&args.settings).unwrap();
+    let tracker_dir = parse["tracker_dir"].to_string();
+
     let (file_scan_tx, file_scan_rx) = mpsc::channel();
     let (file_add_tx,  file_add_rx) =  mpsc::channel();
+
     setup();
 
     let save_scanner_handle = thread::spawn(move || {
