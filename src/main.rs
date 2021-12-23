@@ -68,7 +68,7 @@ fn file_sha256(path: &str) -> String {
 fn find_savs(file_add_tx: &mpsc::Sender<String>) {
     let walkdir = "/home/alex/Dropbox/rand";
 
-    for entry in WalkDir::new(walkdir) .follow_links(true) .into_iter() .filter_map(|e| e.ok()) {
+    for entry in WalkDir::new(walkdir).follow_links(true).into_iter().filter_map(|e| e.ok()) {
         let f_name = entry.file_name().to_string_lossy();
         let sec = entry.metadata().unwrap().modified().unwrap();
 
@@ -159,17 +159,78 @@ fn parse_args(p: &std::path::PathBuf) -> Result<Value> {
     serde_json::from_str(&bytes)
 }
 
+struct SaveLoc {
+    dir: String,
+    resolution_strategy: String,
+    filetypes: Vec<String>,
+}
+
+fn parse_save_json(json_file: &str) -> Vec<SaveLoc>{
+    let mut ret: Vec<SaveLoc> = vec![];
+    let bytes = std::fs::read_to_string(json_file).unwrap();
+    let json: Value = serde_json::from_str(&bytes).unwrap();
+    let save_areas = json["save_areas"].as_array().unwrap();
+
+    for i in 0 .. save_areas.len() {
+        let mut save = SaveLoc {
+            dir: save_areas[i]["dir"].to_string(),
+            resolution_strategy: save_areas[i]["resolution_strategy"].to_string(),
+            filetypes: vec![],
+        };
+        let filetypes = save_areas[i]["filetypes"].as_array().unwrap();
+        ret.push(save);
+        for j in 0 .. filetypes.len() {
+            ret[i].filetypes.push(filetypes[j].as_str().unwrap().to_string());
+        }
+    }
+    ret
+}
+
+fn find_json(json_dir: &str) {
+    let json_dir = json_dir.to_string();
+    let json_dir = json_dir.trim_matches('"');
+
+    for entry in WalkDir::new(json_dir).follow_links(true).into_iter().filter_map(|e| e.ok()) {
+        let f_name = entry.file_name().to_string_lossy();
+        let sec = entry.metadata().unwrap().modified().unwrap();
+
+        if f_name.ends_with(".json") {
+            let entry = entry.path().to_str().unwrap();
+            parse_save_json(&entry);
+            // file_add_tx.send(entry.clone().to_string());
+        }
+    }
+}
+
+fn interactive(json_dir: &str) {
+    loop {
+        println!("Enter command: ");
+        let mut input = String::new();
+        std::io::stdin().read_line(&mut input).unwrap();
+        let input = input.trim();
+        match input {
+            "s" => {
+                find_json(json_dir);
+            },
+            _ => ()
+        }
+    }
+}
+
 fn main() {
-    /*
-    start listener, wait for it to finish init (prob actually dont need to wait since channel has finished init)
-    crawl directories, send messages to listener
-    */
     let args = Cli::from_args();
     let parse = parse_args(&args.settings).unwrap();
     let tracker_dir = parse["tracker_dir"].to_string();
 
     let (file_scan_tx, file_scan_rx) = mpsc::channel();
     let (file_add_tx,  file_add_rx) =  mpsc::channel();
+
+    /*
+    find all json files inside tracker_dir
+    parse settings
+        all files, files of type, singular file
+        resolution_strategy
+    */
 
     setup();
 
@@ -179,7 +240,11 @@ fn main() {
     let save_watcher_handle = thread::spawn(move || {
         save_watcher(file_scan_tx, file_add_rx);
     });
+    let interactive_handle = thread::spawn(move || {
+        interactive(&tracker_dir);
+    });
 
     save_scanner_handle.join().unwrap();
     save_watcher_handle.join().unwrap();
+    interactive_handle.join().unwrap();
 }

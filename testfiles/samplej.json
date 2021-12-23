@@ -1,7 +1,7 @@
 {
     "save_areas": [
         {
-            "dir": "tracker",
+            "dir": "./tracker",
             "resolution_strategy": "choose_latest",
             "filetypes": [
                 "ss1",

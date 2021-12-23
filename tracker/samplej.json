@@ -1,7 +1,15 @@
 {
     "save_areas": [
         {
-            "dir": "hji",
+            "dir": "/home/alex/Dropbox/rand",
+            "resolution_strategy": "choose_latest",
+            "filetypes": [
+                "ss1",
+                "txt"
+            ]
+        },
+        {
+            "dir": "/home/alex/Dropbox/bland",
             "resolution_strategy": "choose_latest",
             "filetypes": [
                 "ss1",
