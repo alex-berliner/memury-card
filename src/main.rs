@@ -154,15 +154,30 @@ fn save_watcher(file_scan_tx: std::sync::mpsc::Sender<notify::DebouncedEvent>,
     }
 }
 
-fn parse_args(p: &std::path::PathBuf) -> Result<Value> {
-    let bytes = std::fs::read_to_string(p).unwrap();
-    serde_json::from_str(&bytes)
-}
-
 struct SaveLoc {
     dir: String,
     resolution_strategy: String,
     filetypes: Vec<String>,
+}
+
+impl SaveLoc {
+    fn print(&self) {
+        println!("dir:      {}", self.dir);
+        println!("reso:     {}", self.resolution_strategy);
+        for j in 0 .. self.filetypes.len() {
+            println!("filetype: {}", self.filetypes[j]);
+        }
+    }
+}
+
+fn parse_json(p: &std::path::PathBuf) -> Result<Value> {
+    let bytes = std::fs::read_to_string(p).unwrap();
+    serde_json::from_str(&bytes)
+}
+
+fn strip_quotes(s: &str) -> String{
+    let s = s.to_string();
+    s.trim_matches('"').to_string()
 }
 
 fn parse_save_json(json_file: &str) -> Vec<SaveLoc>{
@@ -173,8 +188,8 @@ fn parse_save_json(json_file: &str) -> Vec<SaveLoc>{
 
     for i in 0 .. save_areas.len() {
         let mut save = SaveLoc {
-            dir: save_areas[i]["dir"].to_string(),
-            resolution_strategy: save_areas[i]["resolution_strategy"].to_string(),
+            dir: strip_quotes(save_areas[i]["dir"].as_str().unwrap()),
+            resolution_strategy: strip_quotes(save_areas[i]["resolution_strategy"].as_str().unwrap()),
             filetypes: vec![],
         };
         let filetypes = save_areas[i]["filetypes"].as_array().unwrap();
@@ -187,8 +202,7 @@ fn parse_save_json(json_file: &str) -> Vec<SaveLoc>{
 }
 
 fn find_json(json_dir: &str) {
-    let json_dir = json_dir.to_string();
-    let json_dir = json_dir.trim_matches('"');
+    let json_dir = strip_quotes(json_dir);
 
     for entry in WalkDir::new(json_dir).follow_links(true).into_iter().filter_map(|e| e.ok()) {
         let f_name = entry.file_name().to_string_lossy();
@@ -196,7 +210,12 @@ fn find_json(json_dir: &str) {
 
         if f_name.ends_with(".json") {
             let entry = entry.path().to_str().unwrap();
-            parse_save_json(&entry);
+            println!("{:?}", entry);
+            let json = parse_save_json(&entry);
+            for i in json.iter() {
+                i.print();
+                println!("");
+            }
             // file_add_tx.send(entry.clone().to_string());
         }
     }
@@ -219,7 +238,7 @@ fn interactive(json_dir: &str) {
 
 fn main() {
     let args = Cli::from_args();
-    let parse = parse_args(&args.settings).unwrap();
+    let parse = parse_json(&args.settings).unwrap();
     let tracker_dir = parse["tracker_dir"].to_string();
 
     let (file_scan_tx, file_scan_rx) = mpsc::channel();
