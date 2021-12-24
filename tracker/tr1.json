@@ -4,6 +4,7 @@
             "dir": "/home/alex/Dropbox/rand",
             "resolution_strategy": "choose_latest",
             "filetypes": [
+                "sav",
                 "ss1",
                 "txt"
             ]
@@ -12,6 +13,7 @@
             "dir": "/home/alex/Dropbox/bland",
             "resolution_strategy": "choose_latest",
             "filetypes": [
+                "sav",
                 "ss1",
                 "txt"
             ]

@@ -23,9 +23,8 @@ note: are there any common file systems that don't use last modified?
 
 use notify::{DebouncedEvent, Watcher, RecursiveMode, watcher};
 use serde_json::{Result, Value};
-use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fs;
 use std::sync::mpsc;
 use std::thread;
@@ -52,6 +51,7 @@ struct Globals {
     save_map: HashMap<String, Savedata>,
 }
 
+#[allow(dead_code)]
 fn print_type_of<T>(_: &T) {
     println!("{}", std::any::type_name::<T>())
 }
@@ -70,7 +70,6 @@ fn find_savs(file_add_tx: &mpsc::Sender<String>) {
 
     for entry in WalkDir::new(walkdir).follow_links(true).into_iter().filter_map(|e| e.ok()) {
         let f_name = entry.file_name().to_string_lossy();
-        let sec = entry.metadata().unwrap().modified().unwrap();
 
         if f_name.ends_with(".txt") {
             let entry = entry.path().to_str().unwrap();
@@ -161,6 +160,7 @@ struct SaveLoc {
 }
 
 impl SaveLoc {
+    #[allow(dead_code)]
     fn print(&self) {
         println!("dir:      {}", self.dir);
         println!("reso:     {}", self.resolution_strategy);
@@ -180,8 +180,7 @@ fn strip_quotes(s: &str) -> String{
     s.trim_matches('"').to_string()
 }
 
-fn parse_save_json(json_file: &str) -> Vec<SaveLoc>{
-    let mut ret: Vec<SaveLoc> = vec![];
+fn parse_save_json(json_file: &str, accu: &mut Vec<SaveLoc>) {
     let bytes = std::fs::read_to_string(json_file).unwrap();
     let json: Value = serde_json::from_str(&bytes).unwrap();
     let save_areas = json["save_areas"].as_array().unwrap();
@@ -193,35 +192,33 @@ fn parse_save_json(json_file: &str) -> Vec<SaveLoc>{
             filetypes: vec![],
         };
         let filetypes = save_areas[i]["filetypes"].as_array().unwrap();
-        ret.push(save);
         for j in 0 .. filetypes.len() {
-            ret[i].filetypes.push(filetypes[j].as_str().unwrap().to_string());
+            save.filetypes.push(filetypes[j].as_str().unwrap().to_string());
         }
+        accu.push(save);
     }
-    ret
 }
 
-fn find_json(json_dir: &str) {
+// find all files in @json_dir that end in .json, return a vector of SaveLoc's from them
+fn get_save_locs(json_dir: &str) -> Vec<SaveLoc> {
     let json_dir = strip_quotes(json_dir);
+    let mut accu: Vec<SaveLoc> = vec![];
 
     for entry in WalkDir::new(json_dir).follow_links(true).into_iter().filter_map(|e| e.ok()) {
         let f_name = entry.file_name().to_string_lossy();
-        let sec = entry.metadata().unwrap().modified().unwrap();
 
         if f_name.ends_with(".json") {
             let entry = entry.path().to_str().unwrap();
-            println!("{:?}", entry);
-            let json = parse_save_json(&entry);
-            for i in json.iter() {
-                i.print();
-                println!("");
-            }
+            parse_save_json(&entry, &mut accu);
             // file_add_tx.send(entry.clone().to_string());
         }
     }
+    accu
 }
 
 fn interactive(json_dir: &str) {
+    let _savelocs: Vec<SaveLoc> = vec![];
+
     loop {
         println!("Enter command: ");
         let mut input = String::new();
@@ -229,7 +226,7 @@ fn interactive(json_dir: &str) {
         let input = input.trim();
         match input {
             "s" => {
-                find_json(json_dir);
+                let _savelocs = get_save_locs(json_dir);
             },
             _ => ()
         }
