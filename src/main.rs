@@ -87,7 +87,7 @@ sends file events to thread 1
 // say this is done? just looks for file updates and informs save watcher
 fn save_scanner(json_dir: &str,
                 file_scan_rx: mpsc::Receiver<notify::DebouncedEvent>,
-                file_add_tx: &mpsc::Sender<String>) -> Result<()> {
+                file_add_tx: &mpsc::Sender<HashmapCmd>) -> Result<()> {
     find_saves(json_dir, file_add_tx);
     loop {
         match file_scan_rx.recv() {
@@ -95,7 +95,7 @@ fn save_scanner(json_dir: &str,
                 DebouncedEvent::Write(p) | DebouncedEvent::Chmod(p) => {
                     // println!("{:?}", p);
                     let entry = p.to_str().unwrap();
-                    file_add_tx.send(entry.clone().to_string());
+                    file_add_tx.send(HashmapCmd::Watch(entry.clone().to_string()));
                 }
                 DebouncedEvent::NoticeWrite(p) => println!("NoticeWrite {:?}", p),
                 DebouncedEvent::Create(p) => println!("Create {:?}", p),
@@ -109,6 +109,12 @@ fn save_scanner(json_dir: &str,
     }
 }
 
+enum HashmapCmd {
+    Watch(String),
+    Unwatch(String),
+    Copy(),
+}
+
 /*
 responds to file update events
 no file i/o
@@ -117,34 +123,39 @@ writes to watcher
 decides when savegame parity should be updated
 */
 fn save_watcher(file_scan_tx: std::sync::mpsc::Sender<notify::DebouncedEvent>,
-                file_add_rx:  std::sync::mpsc::Receiver<String>,) {
+                file_add_rx:  std::sync::mpsc::Receiver<HashmapCmd>,) {
     let mut watcher = watcher(file_scan_tx, Duration::from_secs(1)).unwrap();
     let mut save_map: HashMap<String, Savedata> = HashMap::new();
     loop {
-        let add_path = file_add_rx.recv().unwrap();
-        watcher.watch(&add_path, RecursiveMode::Recursive).unwrap();
-        let add_hash = file_sha256(&add_path);
-        // println!("{:?} {:?}", add_path, add_hash);
-        let path_split: Vec<&str> = add_path.split("/").collect();
-        let fname = path_split.last().unwrap();
-        let inner_map = save_map.entry(fname.to_string()).or_insert_with(||{Savedata{filemap: HashMap::new()}});
-        inner_map.filemap.entry(add_path.clone()).or_insert(add_hash.to_string());
-        // println!("out: {:?} in: {:?}", add_path, inner_map.filemap.get(&add_path).unwrap());
-        let hs = save_map.get(*fname).unwrap();
-        // TODO: a file update is n^2 because it triggers "no copy" checks on each other file. can be
-        // fixed by caching the hash of the last saved value and not doing anything if the hash is the
-        // same
-        // for (key, value) in &hs.filemap {
-        //     let real_hash = file_sha256(key);
-        //     if add_hash != real_hash {
-        //         println!("update {:?} -> {:?}", add_path, key);
-        //         std::fs::copy(&add_path, key);
-        //     } else {
-        //         println!("no copy");
-        //     }
-        // }
-        // watcher.unwatch(&entry).unwrap();
-        // if file is in save_map, do watch add, else do watch remove
+        match file_add_rx.recv().unwrap() {
+            HashmapCmd::Watch(add_path) => {
+                watcher.watch(&add_path, RecursiveMode::Recursive).unwrap();
+                let add_hash = file_sha256(&add_path);
+                // println!("{:?} {:?}", add_path, add_hash);
+                let path_split: Vec<&str> = add_path.split("/").collect();
+                let fname = path_split.last().unwrap();
+                let inner_map = save_map.entry(fname.to_string()).or_insert_with(||{Savedata{filemap: HashMap::new()}});
+                inner_map.filemap.entry(add_path.clone()).or_insert(add_hash.to_string());
+                // println!("out: {:?} in: {:?}", add_path, inner_map.filemap.get(&add_path).unwrap());
+                let hs = save_map.get(*fname).unwrap();
+                // TODO: a file update is n^2 because it triggers "no copy" checks on each other file. can be
+                // fixed by caching the hash of the last saved value and not doing anything if the hash is the
+                // same
+                // for (key, value) in &hs.filemap {
+                //     let real_hash = file_sha256(key);
+                //     if add_hash != real_hash {
+                //         println!("update {:?} -> {:?}", add_path, key);
+                //         std::fs::copy(&add_path, key);
+                //     } else {
+                //         println!("no copy");
+                //     }
+                // }
+                // watcher.unwatch(&entry).unwrap();
+                // if file is in save_map, do watch add, else do watch remove
+            }
+            HashmapCmd::Unwatch(rmpath) => {}
+            HashmapCmd::Copy() => {}
+        }
     }
 }
 
@@ -233,17 +244,17 @@ fn get_save_watch_entries(savelocs: &Vec<SaveLoc>) -> Vec<String> {
 
 // crawl through saves listed from save files and send results to watcher thread
 fn find_saves(  json_dir: &str,
-                file_add_tx: &mpsc::Sender<String>) {
+                file_add_tx: &mpsc::Sender<HashmapCmd>) {
     let savelocs = get_save_locs(json_dir);
     let save_watch_entries = get_save_watch_entries(&savelocs);
     for e in save_watch_entries {
         println!("{}", e);
-        file_add_tx.send(e);
+        file_add_tx.send(HashmapCmd::Watch(e));
     }
 }
 
 fn interactive( json_dir: &str,
-                file_add_tx: &mpsc::Sender<String>) {
+                file_add_tx: &mpsc::Sender<HashmapCmd>) {
     loop {
         println!("Enter command: ");
         let mut input = String::new();
