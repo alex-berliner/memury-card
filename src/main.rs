@@ -45,12 +45,6 @@ struct Savedata {
     filemap: HashMap<String, String>,
 }
 
-struct Globals {
-    rx: mpsc::Receiver<notify::DebouncedEvent>,
-    watcher: notify::inotify::INotifyWatcher,
-    save_map: HashMap<String, Savedata>,
-}
-
 #[allow(dead_code)]
 fn print_type_of<T>(_: &T) {
     println!("{}", std::any::type_name::<T>())
@@ -65,19 +59,19 @@ fn file_sha256(path: &str) -> String {
     format!("{:02X?}", hasher.finalize())
 }
 
-fn find_savs(file_add_tx: &mpsc::Sender<String>) {
-    let walkdir = "/home/alex/Dropbox/rand";
+// fn find_savs(file_add_tx: &mpsc::Sender<String>) {
+//     let walkdir = "/home/alex/Dropbox/rand";
 
-    for entry in WalkDir::new(walkdir).follow_links(true).into_iter().filter_map(|e| e.ok()) {
-        let f_name = entry.file_name().to_string_lossy();
+//     for entry in WalkDir::new(walkdir).follow_links(true).into_iter().filter_map(|e| e.ok()) {
+//         let f_name = entry.file_name().to_string_lossy();
 
-        if f_name.ends_with(".txt") {
-            let entry = entry.path().to_str().unwrap();
-            println!("file_add_tx -> {:?}", entry);
-            file_add_tx.send(entry.clone().to_string());
-        }
-    }
-}
+//         if f_name.ends_with(".txt") {
+//             let entry = entry.path().to_str().unwrap();
+//             println!("file_add_tx -> {:?}", entry);
+//             file_add_tx.send(entry.clone().to_string());
+//         }
+//     }
+// }
 
 fn setup() {
     fs::create_dir_all(COPY_PATH).unwrap();
@@ -91,9 +85,10 @@ decides upon watch/unwatch events (only)
 sends file events to thread 1
 */
 // say this is done? just looks for file updates and informs save watcher
-fn save_scanner(file_scan_rx: mpsc::Receiver<notify::DebouncedEvent>,
-                file_add_tx:  mpsc::Sender<String>) -> Result<()> {
-    find_savs(&file_add_tx);
+fn save_scanner(json_dir: &str,
+                file_scan_rx: mpsc::Receiver<notify::DebouncedEvent>,
+                file_add_tx: &mpsc::Sender<String>) -> Result<()> {
+    find_saves(json_dir, file_add_tx);
     loop {
         match file_scan_rx.recv() {
             Ok(event) => match event {
@@ -177,6 +172,7 @@ fn parse_json(p: &std::path::PathBuf) -> Result<Value> {
 
 fn strip_quotes(s: &str) -> String{
     let s = s.to_string();
+    // TODO: this doesn't do what the function says it does
     s.trim_matches('"').to_string()
 }
 
@@ -216,9 +212,38 @@ fn get_save_locs(json_dir: &str) -> Vec<SaveLoc> {
     accu
 }
 
-fn interactive(json_dir: &str) {
-    let _savelocs: Vec<SaveLoc> = vec![];
+fn get_save_watch_entries(savelocs: &Vec<SaveLoc>) -> Vec<String> {
+    let mut save_watch_entries: Vec<String> = vec![];
+    // find all save files in each directory
+    // add things to the hash map based on the settings from the savelocs
+    for e in savelocs.iter() {
+        for entry in WalkDir::new(&e.dir).follow_links(true).into_iter().filter_map(|e| e.ok()) {
+            let type_satisfy = false;
+            for ftype in &e.filetypes {
+                let f_name = entry.file_name().to_string_lossy();
+                if f_name.ends_with(ftype) {
+                    // println!("{}: {}", ftype, entry.path().to_str().unwrap());
+                    save_watch_entries.push(entry.path().to_str().unwrap().to_string());
+                }
+            }
+        }
+    }
+    save_watch_entries
+}
 
+// crawl through saves listed from save files and send results to watcher thread
+fn find_saves(  json_dir: &str,
+                file_add_tx: &mpsc::Sender<String>) {
+    let savelocs = get_save_locs(json_dir);
+    let save_watch_entries = get_save_watch_entries(&savelocs);
+    for e in save_watch_entries {
+        println!("{}", e);
+        file_add_tx.send(e);
+    }
+}
+
+fn interactive( json_dir: &str,
+                file_add_tx: &mpsc::Sender<String>) {
     loop {
         println!("Enter command: ");
         let mut input = String::new();
@@ -226,7 +251,7 @@ fn interactive(json_dir: &str) {
         let input = input.trim();
         match input {
             "s" => {
-                let _savelocs = get_save_locs(json_dir);
+                find_saves(json_dir, file_add_tx);
             },
             _ => ()
         }
@@ -236,28 +261,23 @@ fn interactive(json_dir: &str) {
 fn main() {
     let args = Cli::from_args();
     let parse = parse_json(&args.settings).unwrap();
-    let tracker_dir = parse["tracker_dir"].to_string();
+    let tracker_dir1 = parse["tracker_dir"].to_string();
+    let tracker_dir2 = tracker_dir1.clone();
 
     let (file_scan_tx, file_scan_rx) = mpsc::channel();
     let (file_add_tx,  file_add_rx) =  mpsc::channel();
-
-    /*
-    find all json files inside tracker_dir
-    parse settings
-        all files, files of type, singular file
-        resolution_strategy
-    */
+    let file_add_tx2 = file_add_tx.clone();
 
     setup();
 
     let save_scanner_handle = thread::spawn(move || {
-        save_scanner(file_scan_rx, file_add_tx);
+        save_scanner(&tracker_dir1, file_scan_rx, &file_add_tx);
     });
     let save_watcher_handle = thread::spawn(move || {
         save_watcher(file_scan_tx, file_add_rx);
     });
     let interactive_handle = thread::spawn(move || {
-        interactive(&tracker_dir);
+        interactive(&tracker_dir2, &file_add_tx2);
     });
 
     save_scanner_handle.join().unwrap();
