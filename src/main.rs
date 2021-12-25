@@ -101,6 +101,11 @@ fn save_scanner(json_dir: &str,
     }
 }
 
+fn get_filename_from_path(s: &str) -> String{
+    let path_split: Vec<&str> = s.split("/").collect();
+    path_split.last().unwrap().to_string()
+}
+
 enum HashmapCmd {
     Watch(String),
     Unwatch(String),
@@ -114,7 +119,8 @@ owns save_map
 writes to watcher
 decides when savegame parity should be updated
 */
-fn save_watcher(file_scan_tx: std::sync::mpsc::Sender<notify::DebouncedEvent>,
+fn save_watcher(sync_dir: &str,
+                file_scan_tx: std::sync::mpsc::Sender<notify::DebouncedEvent>,
                 file_add_rx:  std::sync::mpsc::Receiver<HashmapCmd>,) {
     let mut watcher = watcher(file_scan_tx, Duration::from_secs(1)).unwrap();
     let mut save_map: HashMap<String, Savedata> = HashMap::new();
@@ -149,7 +155,10 @@ fn save_watcher(file_scan_tx: std::sync::mpsc::Sender<notify::DebouncedEvent>,
                 // watcher.unwatch(&entry).unwrap();
             }
             HashmapCmd::Copy(copypath) => {
-                println!("copy into save manager {}", copypath);
+                println!("copy {} into save manager at {}", copypath, sync_dir);
+                let newloc = sync_dir.to_string() + "/" + &get_filename_from_path(&copypath);
+                println!("{}", newloc);
+                std::fs::copy(&copypath, &newloc);
             }
         }
     }
@@ -271,6 +280,8 @@ fn main() {
     let tracker_dir1 = parse["tracker_dir"].to_string();
     let tracker_dir2 = tracker_dir1.clone();
 
+    let sync_dir = strip_quotes(&parse["sync_dir"].to_string());
+
     let (file_scan_tx, file_scan_rx) = mpsc::channel();
     let (file_add_tx,  file_add_rx) =  mpsc::channel();
     let file_add_tx2 = file_add_tx.clone();
@@ -279,7 +290,7 @@ fn main() {
         save_scanner(&tracker_dir1, file_scan_rx, &file_add_tx);
     });
     let save_watcher_handle = thread::spawn(move || {
-        save_watcher(file_scan_tx, file_add_rx);
+        save_watcher(&sync_dir, file_scan_tx, file_add_rx);
     });
     let interactive_handle = thread::spawn(move || {
         interactive(&tracker_dir2, &file_add_tx2);

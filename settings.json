@@ -1,3 +1,4 @@
 {
-    "tracker_dir": "/home/alex/Code/savesync/tracker"
+    "tracker_dir": "/home/alex/Code/savesync/tracker",
+    "sync_dir": "/home/alex/Dropbox/saves"
 }
