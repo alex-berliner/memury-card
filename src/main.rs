@@ -32,9 +32,6 @@ use std::time::Duration;
 use structopt::StructOpt;
 use walkdir::WalkDir;
 
-static COPY_PATH: &str = "/home/alex/Dropbox/sync";
-static EMU_PATH: &str =  "/home/alex/Dropbox/rand";
-
 #[derive(StructOpt)]
 struct Cli {
     #[structopt(default_value = "settings.json")]
@@ -73,11 +70,6 @@ fn file_sha256(path: &str) -> String {
 //     }
 // }
 
-fn setup() {
-    fs::create_dir_all(COPY_PATH).unwrap();
-    fs::create_dir_all(EMU_PATH).unwrap();
-}
-
 /*
 does initial scan
 performs file copy back and forth
@@ -88,21 +80,21 @@ sends file events to thread 1
 fn save_scanner(json_dir: &str,
                 file_scan_rx: mpsc::Receiver<notify::DebouncedEvent>,
                 file_add_tx: &mpsc::Sender<HashmapCmd>) -> Result<()> {
-    find_saves(json_dir, file_add_tx);
+    // find_saves(json_dir, file_add_tx);
     loop {
         match file_scan_rx.recv() {
             Ok(event) => match event {
                 DebouncedEvent::Write(p) | DebouncedEvent::Chmod(p) => {
-                    // println!("{:?}", p);
+                    println!("{:?}", p);
                     let entry = p.to_str().unwrap();
-                    file_add_tx.send(HashmapCmd::Watch(entry.clone().to_string()));
+                    file_add_tx.send(HashmapCmd::Copy(entry.clone().to_string()));
                 }
-                DebouncedEvent::NoticeWrite(p) => println!("NoticeWrite {:?}", p),
-                DebouncedEvent::Create(p) => println!("Create {:?}", p),
-                DebouncedEvent::Remove(p) => println!("Remove {:?}", p),
-                DebouncedEvent::NoticeRemove(p)  => println!("NoticeRemove {:?}", p),
-                DebouncedEvent::Rename(a, b) => println!("Rename {:?} -> {:?}", a, b),
-                _ => (),
+                DebouncedEvent::NoticeWrite(p) => { println!("NoticeWrite {:?}", p) }
+                DebouncedEvent::Create(p) => { println!("Create {:?}", p) }
+                DebouncedEvent::Remove(p) => { println!("Remove {:?}", p) }
+                DebouncedEvent::NoticeRemove(p)  => { println!("NoticeRemove {:?}", p) }
+                DebouncedEvent::Rename(a, b) => { println!("Rename {:?} -> {:?}", a, b) }
+                _ => { () }
            },
            Err(e) => println!("watch error: {:?}", e),
         };
@@ -112,7 +104,7 @@ fn save_scanner(json_dir: &str,
 enum HashmapCmd {
     Watch(String),
     Unwatch(String),
-    Copy(),
+    Copy(String),
 }
 
 /*
@@ -129,7 +121,8 @@ fn save_watcher(file_scan_tx: std::sync::mpsc::Sender<notify::DebouncedEvent>,
     loop {
         match file_add_rx.recv().unwrap() {
             HashmapCmd::Watch(add_path) => {
-                watcher.watch(&add_path, RecursiveMode::Recursive).unwrap();
+                // this is what makes events bubble up for file modification
+                watcher.watch(&add_path, RecursiveMode::Recursive);
                 let add_hash = file_sha256(&add_path);
                 // println!("{:?} {:?}", add_path, add_hash);
                 let path_split: Vec<&str> = add_path.split("/").collect();
@@ -150,11 +143,14 @@ fn save_watcher(file_scan_tx: std::sync::mpsc::Sender<notify::DebouncedEvent>,
                 //         println!("no copy");
                 //     }
                 // }
-                // watcher.unwatch(&entry).unwrap();
                 // if file is in save_map, do watch add, else do watch remove
             }
-            HashmapCmd::Unwatch(rmpath) => {}
-            HashmapCmd::Copy() => {}
+            HashmapCmd::Unwatch(rmpath) => {
+                // watcher.unwatch(&entry).unwrap();
+            }
+            HashmapCmd::Copy(copypath) => {
+                println!("copy into save manager {}", copypath);
+            }
         }
     }
 }
@@ -278,8 +274,6 @@ fn main() {
     let (file_scan_tx, file_scan_rx) = mpsc::channel();
     let (file_add_tx,  file_add_rx) =  mpsc::channel();
     let file_add_tx2 = file_add_tx.clone();
-
-    setup();
 
     let save_scanner_handle = thread::spawn(move || {
         save_scanner(&tracker_dir1, file_scan_rx, &file_add_tx);
