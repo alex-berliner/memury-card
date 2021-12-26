@@ -31,7 +31,7 @@ use std::thread;
 use std::time::Duration;
 use structopt::StructOpt;
 use walkdir::WalkDir;
-
+use std::path::{PathBuf, Path};
 #[derive(StructOpt)]
 struct Cli {
     #[structopt(default_value = "settings.json")]
@@ -101,11 +101,6 @@ fn save_scanner(json_dir: &str,
     }
 }
 
-fn get_filename_from_path(s: &str) -> String{
-    let path_split: Vec<&str> = s.split("/").collect();
-    path_split.last().unwrap().to_string()
-}
-
 enum HashmapCmd {
     Watch(String),
     Unwatch(String),
@@ -154,11 +149,14 @@ fn save_watcher(sync_dir: &str,
             HashmapCmd::Unwatch(rmpath) => {
                 // watcher.unwatch(&entry).unwrap();
             }
-            HashmapCmd::Copy(copypath) => {
-                println!("copy {} into save manager at {}", copypath, sync_dir);
-                let newloc = sync_dir.to_string() + "/" + &get_filename_from_path(&copypath);
-                println!("{}", newloc);
-                std::fs::copy(&copypath, &newloc);
+            HashmapCmd::Copy(src) => {
+                let mut dst = PathBuf::new();
+                let src = Path::new(&src);
+                dst.push(sync_dir);
+                dst.push(src.file_name().expect("this was probably not a file"));
+                dst.set_extension("txt");
+                println!("copy {:?} into save manager at {:?}", src, dst);
+                std::fs::copy(&src, dst);
             }
         }
     }
