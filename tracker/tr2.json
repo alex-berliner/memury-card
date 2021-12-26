@@ -1,5 +1,5 @@
 {
-    "save_areas": [
+    "saves": [
         {
             "dir": "/home/alex/Dropbox/frand",
             "resolution_strategy": "choose_latest",

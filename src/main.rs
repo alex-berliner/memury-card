@@ -1,26 +1,21 @@
 /*
-versioned storage area: this app currently just keeps files in sync as they're updated. the true purpose is to maintain
-a primary area where saves will be located. saves that don't exist in this area will be copied into it. the program will
-on startup/periodically/continuously/when responding to events crawl monitored directories to find saves that the user
-has in their save directories that should be copied into the storage area
-two saves with the same name will be kept in sync with the program copying the more recent save on top of the old save.
+watcher can watch paths and files but the events only carry the exact file that was modified, not the path that registered
+the file. this makes it hard to know which rules to apply to the file, particularly with path-watched files because the
+files don't have an explicit reference to do something like reference into a hashmap with. the path registered for a
+file could be determined by repeatedly chopping off the last part of the file and checking for it in the hash map.
+This would solve everything but two overlapping directories being registered, which seems like a reasonable restriction
+to the user and something that might be easy to validate at startup.
 
-resolution mechanism: how should the file of record be determined? people will not like it if i blast away their save
-files of the same name in different folders on the first run. there may even be games where the same name is used in
-different folders to refer to different saves. also during startup it should probably take the date of all the files and
-use the last modified and copy that to all the other attached files. "attachment" is going to have to be determined
-somehow and it's not simple. i could let the user define where different files should be attached or the attachment
-scheme for certain directories. a principle for this program is centralized management so they could be able to declare
-the type of attachment as they define what directory to look for saves in
 
-high configuribility: up until now I've been proofing things out but a lot of how I want this program to work is outside
-of code. I want to build this so that it's easily manageable from configuration files, not inside a horrible form-driven
-program. Directories to manage and their management style will be pulled from json file(s) that define where the program
-should look, for what it should look, how it should resolve save conflicts, etc.
+resolving same-name files when registering directories
+register /a
 
-note: are there any common file systems that don't use last modified?
+/a/b/s.sav
+/a/c/s.sav
+
+"preserve_structure": "true" (default: true)
+
 */
-
 use notify::{DebouncedEvent, Watcher, RecursiveMode, watcher};
 use serde_json::{Result, Value};
 use sha2::{Digest, Sha256};
@@ -39,7 +34,8 @@ struct Cli {
 }
 
 struct Savedata {
-    filemap: HashMap<String, String>,
+    // filemap: HashMap<String, String>,
+    saveloc: SaveLoc,
 }
 
 #[allow(dead_code)]
@@ -70,13 +66,6 @@ fn file_sha256(path: &str) -> String {
 //     }
 // }
 
-/*
-does initial scan
-performs file copy back and forth
-decides upon watch/unwatch events (only)
-sends file events to thread 1
-*/
-// say this is done? just looks for file updates and informs save watcher
 fn save_scanner(json_dir: &str,
                 file_scan_rx: mpsc::Receiver<notify::DebouncedEvent>,
                 file_add_tx: &mpsc::Sender<HashmapCmd>) -> Result<()> {
@@ -85,9 +74,9 @@ fn save_scanner(json_dir: &str,
         match file_scan_rx.recv() {
             Ok(event) => match event {
                 DebouncedEvent::Write(p) | DebouncedEvent::Chmod(p) => {
+                    let p = PathBuf::from(p);
                     println!("{:?}", p);
-                    let entry = p.to_str().unwrap();
-                    file_add_tx.send(HashmapCmd::Copy(entry.clone().to_string()));
+                    file_add_tx.send(HashmapCmd::Copy(p));
                 }
                 DebouncedEvent::NoticeWrite(p) => { println!("NoticeWrite {:?}", p) }
                 DebouncedEvent::Create(p) => { println!("Create {:?}", p) }
@@ -102,18 +91,12 @@ fn save_scanner(json_dir: &str,
 }
 
 enum HashmapCmd {
-    Watch(String),
+    WatchDir(SaveLoc),
+    WatchFile(SaveFile),
     Unwatch(String),
-    Copy(String),
+    Copy(PathBuf),
 }
 
-/*
-responds to file update events
-no file i/o
-owns save_map
-writes to watcher
-decides when savegame parity should be updated
-*/
 fn save_watcher(sync_dir: &str,
                 file_scan_tx: std::sync::mpsc::Sender<notify::DebouncedEvent>,
                 file_add_rx:  std::sync::mpsc::Receiver<HashmapCmd>,) {
@@ -121,9 +104,14 @@ fn save_watcher(sync_dir: &str,
     let mut save_map: HashMap<String, Savedata> = HashMap::new();
     loop {
         match file_add_rx.recv().unwrap() {
-            HashmapCmd::Watch(add_path) => {
+
+            HashmapCmd::WatchFile(savefile) => {
+                watcher.watch(&savefile.file, RecursiveMode::NonRecursive);
+            }
+            HashmapCmd::WatchDir(saveloc) => {
                 // this is what makes events bubble up for file modification
-                watcher.watch(&add_path, RecursiveMode::Recursive);
+                watcher.watch(&saveloc.dir, RecursiveMode::Recursive);
+/*
                 let add_hash = file_sha256(&add_path);
                 // println!("{:?} {:?}", add_path, add_hash);
                 let path_split: Vec<&str> = add_path.split("/").collect();
@@ -144,35 +132,38 @@ fn save_watcher(sync_dir: &str,
                 //         println!("no copy");
                 //     }
                 // }
-                // if file is in save_map, do watch add, else do watch remove
+                // if file is in save_map, do watch add, else do watch remove */
             }
             HashmapCmd::Unwatch(rmpath) => {
                 // watcher.unwatch(&entry).unwrap();
             }
             HashmapCmd::Copy(src) => {
-                let mut dst = PathBuf::new();
-                let src = Path::new(&src);
-                dst.push(sync_dir);
-                dst.push(src.file_name().expect("this was probably not a file"));
-                dst.set_extension("txt");
+                let mut dst = PathBuf::from(sync_dir);
+                let src_file_name = src.file_name().expect("this was probably not a file");
+                dst.push(&src_file_name);
+                dst.set_extension(src.extension().unwrap());
                 println!("copy {:?} into save manager at {:?}", src, dst);
-                std::fs::copy(&src, dst);
+                std::fs::create_dir_all(&dst);
+                std::fs::copy(&src, &dst);
             }
         }
     }
 }
 
 struct SaveLoc {
-    dir: String,
-    resolution_strategy: String,
+    dir: PathBuf,
     filetypes: Vec<String>,
+}
+
+struct SaveFile {
+    file: PathBuf,
+    sync_loc: PathBuf,
 }
 
 impl SaveLoc {
     #[allow(dead_code)]
     fn print(&self) {
-        println!("dir:      {}", self.dir);
-        println!("reso:     {}", self.resolution_strategy);
+        println!("dir:      {:?}", self.dir);
         for j in 0 .. self.filetypes.len() {
             println!("filetype: {}", self.filetypes[j]);
         }
@@ -190,40 +181,54 @@ fn strip_quotes(s: &str) -> String{
     s.trim_matches('"').to_string()
 }
 
-fn parse_save_json(json_file: &str, accu: &mut Vec<SaveLoc>) {
+fn parse_save_json( json_file: &str,
+                    dir_accu: &mut Vec<SaveLoc>,
+                    file_accu: &mut Vec<SaveFile>,) {
     let bytes = std::fs::read_to_string(json_file).unwrap();
     let json: Value = serde_json::from_str(&bytes).unwrap();
-    let save_areas = json["save_areas"].as_array().unwrap();
+    let saves = json["saves"].as_array().unwrap();
 
-    for i in 0 .. save_areas.len() {
-        let mut save = SaveLoc {
-            dir: strip_quotes(save_areas[i]["dir"].as_str().unwrap()),
-            resolution_strategy: strip_quotes(save_areas[i]["resolution_strategy"].as_str().unwrap()),
-            filetypes: vec![],
-        };
-        let filetypes = save_areas[i]["filetypes"].as_array().unwrap();
-        for j in 0 .. filetypes.len() {
-            save.filetypes.push(filetypes[j].as_str().unwrap().to_string());
+    for i in 0 .. saves.len() {
+        // json elements with the "dir" field populated are directories
+        if saves[i]["dir"] != Value::Null {
+            let mut save = SaveLoc {
+                dir: PathBuf::from(strip_quotes(saves[i]["dir"].as_str().unwrap())),
+                // resolution_strategy: strip_quotes(saves[i]["resolution_strategy"].as_str().unwrap()),
+                filetypes: vec![],
+            };
+            let filetypes = saves[i]["filetypes"].as_array().unwrap();
+            for j in 0 .. filetypes.len() {
+                save.filetypes.push(filetypes[j].as_str().unwrap().to_string());
+            }
+            dir_accu.push(save);
+        } else if saves[i]["file"] != Value::Null {
+            let save = SaveFile {
+                file:     PathBuf::from(strip_quotes(saves[i]["file"].as_str().unwrap())),
+                sync_loc: if saves[i]["sync_loc"] != Value::Null
+                            { PathBuf::from(strip_quotes(saves[i]["sync_loc"].as_str().unwrap())) } else
+                            { PathBuf::from("") },
+            };
+            file_accu.push(save);
         }
-        accu.push(save);
     }
 }
 
 // find all files in @json_dir that end in .json, return a vector of SaveLoc's from them
-fn get_save_locs(json_dir: &str) -> Vec<SaveLoc> {
+fn get_save_descriptors(json_dir: &str) -> (Vec<SaveLoc>, Vec<SaveFile>) {
     let json_dir = strip_quotes(json_dir);
-    let mut accu: Vec<SaveLoc> = vec![];
+    let mut dir_accu: Vec<SaveLoc> = vec![];
+    let mut file_accu: Vec<SaveFile> = vec![];
 
     for entry in WalkDir::new(json_dir).follow_links(true).into_iter().filter_map(|e| e.ok()) {
         let f_name = entry.file_name().to_string_lossy();
 
         if f_name.ends_with(".json") {
             let entry = entry.path().to_str().unwrap();
-            parse_save_json(&entry, &mut accu);
+            parse_save_json(&entry, &mut dir_accu, &mut file_accu);
             // file_add_tx.send(entry.clone().to_string());
         }
     }
-    accu
+    (dir_accu, file_accu)
 }
 
 fn get_save_watch_entries(savelocs: &Vec<SaveLoc>) -> Vec<String> {
@@ -248,11 +253,16 @@ fn get_save_watch_entries(savelocs: &Vec<SaveLoc>) -> Vec<String> {
 // crawl through saves listed from save files and send results to watcher thread
 fn find_saves(  json_dir: &str,
                 file_add_tx: &mpsc::Sender<HashmapCmd>) {
-    let savelocs = get_save_locs(json_dir);
-    let save_watch_entries = get_save_watch_entries(&savelocs);
-    for e in save_watch_entries {
-        println!("{}", e);
-        file_add_tx.send(HashmapCmd::Watch(e));
+    let (savelocs, savefiles) = get_save_descriptors(json_dir);
+    // let save_watch_entries = get_save_watch_entries(&savelocs);
+    for e in savelocs {
+        // println!("{}", e.dir);
+        file_add_tx.send(HashmapCmd::WatchDir(e));
+    }
+
+    for e in savefiles {
+        // println!("{}", e.dir);
+        file_add_tx.send(HashmapCmd::WatchFile(e));
     }
 }
 

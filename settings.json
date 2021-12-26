@@ -1,4 +1,8 @@
 {
     "tracker_dir": "/home/alex/Code/savesync/tracker",
-    "sync_dir": "/home/alex/Dropbox/saves"
+    "sync_dir": "/home/alex/Dropbox/saves",
+    "ignore_filetypes": [
+        "iso",
+        "gba"
+    ]
 }

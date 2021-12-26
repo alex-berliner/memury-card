@@ -1,8 +1,8 @@
 {
-    "save_areas": [
+    "saves": [
         {
             "dir": "/home/alex/Dropbox/rand",
-            "resolution_strategy": "choose_latest",
+            "preserve_structure": true,
             "filetypes": [
                 "sav",
                 "ss1",
@@ -11,12 +11,21 @@
         },
         {
             "dir": "/home/alex/Dropbox/bland",
-            "resolution_strategy": "choose_latest",
+            "preserve_structure": true,
+            "sync_loc": "",
             "filetypes": [
                 "sav",
                 "ss1",
                 "txt"
             ]
+        },
+        {
+            "file": "/home/alex/.local/share/dolphin-emu/GC/MemoryCardA.USA.raw",
+            "sync_loc": ""
+        },
+        {
+            "file": "/home/alex/Dropbox/rand/bluh.txt",
+            "sync_loc": "insert"
         }
     ]
 }
