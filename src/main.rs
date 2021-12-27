@@ -6,6 +6,8 @@ file could be determined by repeatedly chopping off the last part of the file an
 This would solve everything but two overlapping directories being registered, which seems like a reasonable restriction
 to the user and something that might be easy to validate at startup.
 
+single SaveLoc with contextual settings in json, figure out fields on the fly
+hashmap stores
 
 resolving same-name files when registering directories
 register /a
@@ -27,6 +29,29 @@ use std::time::Duration;
 use structopt::StructOpt;
 use walkdir::WalkDir;
 use std::path::{PathBuf, Path};
+
+mod helper;
+
+struct SaveLoc {
+    dir: PathBuf,
+    filetypes: Vec<String>,
+}
+
+struct SaveFile {
+    file: PathBuf,
+    sync_loc: PathBuf,
+}
+
+impl SaveLoc {
+    #[allow(dead_code)]
+    fn print(&self) {
+        println!("dir:      {:?}", self.dir);
+        for j in 0 .. self.filetypes.len() {
+            println!("filetype: {}", self.filetypes[j]);
+        }
+    }
+}
+
 #[derive(StructOpt)]
 struct Cli {
     #[structopt(default_value = "settings.json")]
@@ -38,33 +63,12 @@ struct Savedata {
     saveloc: SaveLoc,
 }
 
-#[allow(dead_code)]
-fn print_type_of<T>(_: &T) {
-    println!("{}", std::any::type_name::<T>())
+enum HashmapCmd {
+    WatchDir(SaveLoc),
+    WatchFile(SaveFile),
+    Unwatch(String),
+    Copy(PathBuf),
 }
-
-fn file_sha256(path: &str) -> String {
-    // TODO: check file exists
-    // TODO: make better hash format
-    let bytes = std::fs::read(path).unwrap();
-    let mut hasher = Sha256::new();
-    hasher.update(bytes);
-    format!("{:02X?}", hasher.finalize())
-}
-
-// fn find_savs(file_add_tx: &mpsc::Sender<String>) {
-//     let walkdir = "/home/alex/Dropbox/rand";
-
-//     for entry in WalkDir::new(walkdir).follow_links(true).into_iter().filter_map(|e| e.ok()) {
-//         let f_name = entry.file_name().to_string_lossy();
-
-//         if f_name.ends_with(".txt") {
-//             let entry = entry.path().to_str().unwrap();
-//             println!("file_add_tx -> {:?}", entry);
-//             file_add_tx.send(entry.clone().to_string());
-//         }
-//     }
-// }
 
 fn save_scanner(json_dir: &str,
                 file_scan_rx: mpsc::Receiver<notify::DebouncedEvent>,
@@ -90,13 +94,6 @@ fn save_scanner(json_dir: &str,
     }
 }
 
-enum HashmapCmd {
-    WatchDir(SaveLoc),
-    WatchFile(SaveFile),
-    Unwatch(String),
-    Copy(PathBuf),
-}
-
 fn save_watcher(sync_dir: &str,
                 file_scan_tx: std::sync::mpsc::Sender<notify::DebouncedEvent>,
                 file_add_rx:  std::sync::mpsc::Receiver<HashmapCmd>,) {
@@ -111,28 +108,6 @@ fn save_watcher(sync_dir: &str,
             HashmapCmd::WatchDir(saveloc) => {
                 // this is what makes events bubble up for file modification
                 watcher.watch(&saveloc.dir, RecursiveMode::Recursive);
-/*
-                let add_hash = file_sha256(&add_path);
-                // println!("{:?} {:?}", add_path, add_hash);
-                let path_split: Vec<&str> = add_path.split("/").collect();
-                let fname = path_split.last().unwrap();
-                let inner_map = save_map.entry(fname.to_string()).or_insert_with(||{Savedata{filemap: HashMap::new()}});
-                inner_map.filemap.entry(add_path.clone()).or_insert(add_hash.to_string());
-                // println!("out: {:?} in: {:?}", add_path, inner_map.filemap.get(&add_path).unwrap());
-                let hs = save_map.get(*fname).unwrap();
-                // TODO: a file update is n^2 because it triggers "no copy" checks on each other file. can be
-                // fixed by caching the hash of the last saved value and not doing anything if the hash is the
-                // same
-                // for (key, value) in &hs.filemap {
-                //     let real_hash = file_sha256(key);
-                //     if add_hash != real_hash {
-                //         println!("update {:?} -> {:?}", add_path, key);
-                //         std::fs::copy(&add_path, key);
-                //     } else {
-                //         println!("no copy");
-                //     }
-                // }
-                // if file is in save_map, do watch add, else do watch remove */
             }
             HashmapCmd::Unwatch(rmpath) => {
                 // watcher.unwatch(&entry).unwrap();
@@ -150,37 +125,6 @@ fn save_watcher(sync_dir: &str,
     }
 }
 
-struct SaveLoc {
-    dir: PathBuf,
-    filetypes: Vec<String>,
-}
-
-struct SaveFile {
-    file: PathBuf,
-    sync_loc: PathBuf,
-}
-
-impl SaveLoc {
-    #[allow(dead_code)]
-    fn print(&self) {
-        println!("dir:      {:?}", self.dir);
-        for j in 0 .. self.filetypes.len() {
-            println!("filetype: {}", self.filetypes[j]);
-        }
-    }
-}
-
-fn parse_json(p: &std::path::PathBuf) -> Result<Value> {
-    let bytes = std::fs::read_to_string(p).unwrap();
-    serde_json::from_str(&bytes)
-}
-
-fn strip_quotes(s: &str) -> String{
-    let s = s.to_string();
-    // TODO: this doesn't do what the function says it does
-    s.trim_matches('"').to_string()
-}
-
 fn parse_save_json( json_file: &str,
                     dir_accu: &mut Vec<SaveLoc>,
                     file_accu: &mut Vec<SaveFile>,) {
@@ -192,8 +136,7 @@ fn parse_save_json( json_file: &str,
         // json elements with the "dir" field populated are directories
         if saves[i]["dir"] != Value::Null {
             let mut save = SaveLoc {
-                dir: PathBuf::from(strip_quotes(saves[i]["dir"].as_str().unwrap())),
-                // resolution_strategy: strip_quotes(saves[i]["resolution_strategy"].as_str().unwrap()),
+                dir: PathBuf::from(helper::strip_quotes(saves[i]["dir"].as_str().unwrap())),
                 filetypes: vec![],
             };
             let filetypes = saves[i]["filetypes"].as_array().unwrap();
@@ -203,9 +146,9 @@ fn parse_save_json( json_file: &str,
             dir_accu.push(save);
         } else if saves[i]["file"] != Value::Null {
             let save = SaveFile {
-                file:     PathBuf::from(strip_quotes(saves[i]["file"].as_str().unwrap())),
+                file:     PathBuf::from(helper::strip_quotes(saves[i]["file"].as_str().unwrap())),
                 sync_loc: if saves[i]["sync_loc"] != Value::Null
-                            { PathBuf::from(strip_quotes(saves[i]["sync_loc"].as_str().unwrap())) } else
+                            { PathBuf::from(helper::strip_quotes(saves[i]["sync_loc"].as_str().unwrap())) } else
                             { PathBuf::from("") },
             };
             file_accu.push(save);
@@ -215,7 +158,7 @@ fn parse_save_json( json_file: &str,
 
 // find all files in @json_dir that end in .json, return a vector of SaveLoc's from them
 fn get_save_descriptors(json_dir: &str) -> (Vec<SaveLoc>, Vec<SaveFile>) {
-    let json_dir = strip_quotes(json_dir);
+    let json_dir = helper::strip_quotes(json_dir);
     let mut dir_accu: Vec<SaveLoc> = vec![];
     let mut file_accu: Vec<SaveFile> = vec![];
 
@@ -284,11 +227,11 @@ fn interactive( json_dir: &str,
 
 fn main() {
     let args = Cli::from_args();
-    let parse = parse_json(&args.settings).unwrap();
+    let parse = helper::parse_json(&args.settings).unwrap();
     let tracker_dir1 = parse["tracker_dir"].to_string();
     let tracker_dir2 = tracker_dir1.clone();
 
-    let sync_dir = strip_quotes(&parse["sync_dir"].to_string());
+    let sync_dir = helper::strip_quotes(&parse["sync_dir"].to_string());
 
     let (file_scan_tx, file_scan_rx) = mpsc::channel();
     let (file_add_tx,  file_add_rx) =  mpsc::channel();

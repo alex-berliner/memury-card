@@ -124,3 +124,43 @@ fn create_globals() -> Globals {
     };
     globals
 }
+
+
+// fn find_saves(file_add_tx: &mpsc::Sender<String>) {
+//     let walkdir = "/home/alex/Dropbox/rand";
+
+//     for entry in WalkDir::new(walkdir).follow_links(true).into_iter().filter_map(|e| e.ok()) {
+//         let f_name = entry.file_name().to_string_lossy();
+
+//         if f_name.ends_with(".txt") {
+//             let entry = entry.path().to_str().unwrap();
+//             println!("file_add_tx -> {:?}", entry);
+//             file_add_tx.send(entry.clone().to_string());
+//         }
+//     }
+// }
+
+
+fn inner_map() {
+    let add_hash = file_sha256(&add_path);
+    // println!("{:?} {:?}", add_path, add_hash);
+    let path_split: Vec<&str> = add_path.split("/").collect();
+    let fname = path_split.last().unwrap();
+    let inner_map = save_map.entry(fname.to_string()).or_insert_with(||{Savedata{filemap: HashMap::new()}});
+    inner_map.filemap.entry(add_path.clone()).or_insert(add_hash.to_string());
+    // println!("out: {:?} in: {:?}", add_path, inner_map.filemap.get(&add_path).unwrap());
+    let hs = save_map.get(*fname).unwrap();
+    // TODO: a file update is n^2 because it triggers "no copy" checks on each other file. can be
+    // fixed by caching the hash of the last saved value and not doing anything if the hash is the
+    // same
+    for (key, value) in &hs.filemap {
+        let real_hash = file_sha256(key);
+        if add_hash != real_hash {
+            println!("update {:?} -> {:?}", add_path, key);
+            std::fs::copy(&add_path, key);
+        } else {
+            println!("no copy");
+        }
+    }
+    // if file is in save_map, do watch add, else do watch remove
+}
