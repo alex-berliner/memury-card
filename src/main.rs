@@ -144,7 +144,6 @@ fn save_scanner(
     file_scan_rx: mpsc::Receiver<notify::DebouncedEvent>,
     file_add_tx: &mpsc::Sender<HashmapCmd>,
 ) -> Result<()> {
-    // find_saves(json_dir, file_add_tx);
     loop {
         match file_scan_rx.recv() {
             Ok(event) => match event {
@@ -181,16 +180,21 @@ fn save_watcher(
     file_add_rx: std::sync::mpsc::Receiver<HashmapCmd>,
 ) {
     let mut watcher = watcher(file_scan_tx, Duration::from_secs(1)).unwrap();
-    let mut save_map: HashMap<String, Savedata> = HashMap::new();
+    let mut save_map: HashMap<String, SaveDef> = HashMap::new();
     loop {
         match file_add_rx.recv().unwrap() {
             HashmapCmd::Watch(save) => {
                 save.print();
+                let err = watcher.watch(&save.path, RecursiveMode::Recursive);
+                // TOOD: if err...
+                let str_path = save.path.clone().into_os_string().into_string().unwrap();
+                save_map.entry(str_path.to_string()).or_insert(save);
             }
             HashmapCmd::Unwatch(rmpath) => {
                 // watcher.unwatch(&entry).unwrap();
             }
             HashmapCmd::Copy(src) => {
+                // dont copy right away, poll from hashmap to get settings to see whehter to append something, etc
                 let mut dst = PathBuf::from(sync_dir);
                 let src_file_name = src.file_name().expect("this was probably not a file");
                 dst.push(&src_file_name);
@@ -222,29 +226,6 @@ fn get_save_descriptors(json_dir: &str) -> Vec<SaveDef> {
         }
     }
     save_accu
-}
-
-fn get_save_watch_entries(savelocs: &Vec<SaveDir>) -> Vec<String> {
-    let mut save_watch_entries: Vec<String> = vec![];
-    // find all save files in each directory
-    // add things to the hash map based on the settings from the savelocs
-    for e in savelocs.iter() {
-        for entry in WalkDir::new(&e.dir)
-            .follow_links(true)
-            .into_iter()
-            .filter_map(|e| e.ok())
-        {
-            let type_satisfy = false;
-            for ftype in &e.filetypes {
-                let f_name = entry.file_name().to_string_lossy();
-                if f_name.ends_with(ftype) {
-                    // println!("{}: {}", ftype, entry.path().to_str().unwrap());
-                    save_watch_entries.push(entry.path().to_str().unwrap().to_string());
-                }
-            }
-        }
-    }
-    save_watch_entries
 }
 
 // crawl through saves listed from save files and send results to watcher thread

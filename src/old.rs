@@ -164,3 +164,27 @@ fn inner_map() {
     }
     // if file is in save_map, do watch add, else do watch remove
 }
+
+
+fn get_save_watch_entries(savelocs: &Vec<SaveDir>) -> Vec<String> {
+    let mut save_watch_entries: Vec<String> = vec![];
+    // find all save files in each directory
+    // add things to the hash map based on the settings from the savelocs
+    for e in savelocs.iter() {
+        for entry in WalkDir::new(&e.dir)
+            .follow_links(true)
+            .into_iter()
+            .filter_map(|e| e.ok())
+        {
+            let type_satisfy = false;
+            for ftype in &e.filetypes {
+                let f_name = entry.file_name().to_string_lossy();
+                if f_name.ends_with(ftype) {
+                    // println!("{}: {}", ftype, entry.path().to_str().unwrap());
+                    save_watch_entries.push(entry.path().to_str().unwrap().to_string());
+                }
+            }
+        }
+    }
+    save_watch_entries
+}
