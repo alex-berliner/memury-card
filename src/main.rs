@@ -17,6 +17,8 @@ register /a
 
 "preserve_structure": "true" (default: true)
 
+TDD
+
 */
 
 use notify::{watcher, DebouncedEvent, RecursiveMode, Watcher};
@@ -32,14 +34,11 @@ use walkdir::WalkDir;
 
 mod helper;
 
-struct SaveDir {
-    dir: PathBuf,
-    filetypes: Vec<String>,
-}
 
-struct SaveFile {
-    file: PathBuf,
-    sync_loc: PathBuf,
+impl SaveDef {
+    fn print(&self) {
+        println!("{:?}", self.path);
+    }
 }
 
 impl SaveDir {
@@ -66,6 +65,7 @@ struct Savedata {
 enum HashmapCmd {
     WatchDir(SaveDir),
     WatchFile(SaveFile),
+    Watch(SaveDef),
     Unwatch(String),
     Copy(PathBuf),
 }
@@ -85,35 +85,82 @@ fn interactive(json_dir: &str, file_add_tx: &mpsc::Sender<HashmapCmd>) {
     }
 }
 
-fn parse_save_json(json_file: &str, dir_accu: &mut Vec<SaveDir>, file_accu: &mut Vec<SaveFile>) {
+struct SaveFile {
+    file: PathBuf,
+    sync_loc: PathBuf,
+}
+
+struct SaveDir {
+    dir: PathBuf,
+    filetypes: Vec<String>,
+}
+
+enum SaveOpts {
+    File(SaveFile),
+    Dir(SaveDir),
+}
+
+struct SaveDef {
+    path: PathBuf,
+    options: SaveOpts,
+}
+
+fn parse_save_json(json_file: &str, dir_accu: &mut Vec<SaveDir>, file_accu: &mut Vec<SaveFile>, save_accu: &mut Vec<SaveDef>) {
     let bytes = std::fs::read_to_string(json_file).unwrap();
     let json: Value = serde_json::from_str(&bytes).unwrap();
     let saves = json["saves"].as_array().unwrap();
 
     for i in 0..saves.len() {
         // json elements with the "dir" field populated are directories
-        if saves[i]["dir"] != Value::Null {
-            let mut save = SaveDir {
-                dir: PathBuf::from(helper::strip_quotes(saves[i]["dir"].as_str().unwrap())),
+        let mut path = PathBuf::new();
+        let is_dir = saves[i]["dir"] != Value::Null;
+        let mut saveopt = if is_dir {
+            path.push(helper::strip_quotes(saves[i]["dir"].as_str().unwrap()));
+            let mut savedir = SaveDir {
+                dir: PathBuf::from("/"),
                 filetypes: vec![],
             };
-            let filetypes = saves[i]["filetypes"].as_array().unwrap();
+            let mut filetypes = saves[i]["filetypes"].as_array().unwrap();
             for j in 0..filetypes.len() {
-                save.filetypes
-                    .push(filetypes[j].as_str().unwrap().to_string());
+                savedir.filetypes.push(filetypes[j].as_str().unwrap().to_string());
             }
-            dir_accu.push(save);
-        } else if saves[i]["file"] != Value::Null {
-            let save = SaveFile {
-                file: PathBuf::from(helper::strip_quotes(saves[i]["file"].as_str().unwrap())),
-                sync_loc: if saves[i]["sync_loc"] != Value::Null {
-                    PathBuf::from(helper::strip_quotes(saves[i]["sync_loc"].as_str().unwrap()))
-                } else {
-                    PathBuf::from("")
-                },
+            SaveOpts::Dir(savedir)
+        } else {
+            path.push(helper::strip_quotes(saves[i]["file"].as_str().unwrap()));
+            let savefile = SaveFile {
+                file: PathBuf::from("/x.txt"),
+                sync_loc: PathBuf::from("asdasdas"),
             };
-            file_accu.push(save);
-        }
+            SaveOpts::File(savefile)
+        };
+        let savedef = SaveDef {
+            path: path,
+            options: saveopt,
+        };
+        save_accu.push(savedef);
+        //     let path = if saves[i]["sync_loc"] != Value::Null
+
+        //     let mut save = SaveDir {
+        //         dir: PathBuf::from(helper::strip_quotes(saves[i]["dir"].as_str().unwrap())),
+        //         filetypes: vec![],
+        //     };
+        //     let filetypes = saves[i]["filetypes"].as_array().unwrap();
+        //     for j in 0..filetypes.len() {
+        //         save.filetypes
+        //             .push(filetypes[j].as_str().unwrap().to_string());
+        //     }
+        //     dir_accu.push(save);
+        // } else if saves[i]["file"] != Value::Null {
+        //     let save = SaveFile {
+        //         file: PathBuf::from(helper::strip_quotes(saves[i]["file"].as_str().unwrap())),
+        //         sync_loc: if saves[i]["sync_loc"] != Value::Null {
+        //             PathBuf::from(helper::strip_quotes(saves[i]["sync_loc"].as_str().unwrap()))
+        //         } else {
+        //             PathBuf::from("")
+        //         },
+        //     };
+        //     file_accu.push(save);
+        // }
     }
 }
 
@@ -162,6 +209,10 @@ fn save_watcher(
     let mut save_map: HashMap<String, Savedata> = HashMap::new();
     loop {
         match file_add_rx.recv().unwrap() {
+            HashmapCmd::Watch(save) => {
+                println!("save");
+                save.print();
+            }
             HashmapCmd::WatchFile(savefile) => {
                 watcher.watch(&savefile.file, RecursiveMode::NonRecursive);
             }
@@ -186,10 +237,11 @@ fn save_watcher(
 }
 
 // find all files in @json_dir that end in .json, return a vector of SaveDir's from them
-fn get_save_descriptors(json_dir: &str) -> (Vec<SaveDir>, Vec<SaveFile>) {
+fn get_save_descriptors(json_dir: &str) -> (Vec<SaveDir>, Vec<SaveFile>, Vec<SaveDef>) {
     let json_dir = helper::strip_quotes(json_dir);
     let mut dir_accu: Vec<SaveDir> = vec![];
     let mut file_accu: Vec<SaveFile> = vec![];
+    let mut save_accu: Vec<SaveDef> = vec![];
 
     for entry in WalkDir::new(json_dir)
         .follow_links(true)
@@ -200,11 +252,11 @@ fn get_save_descriptors(json_dir: &str) -> (Vec<SaveDir>, Vec<SaveFile>) {
 
         if f_name.ends_with(".json") {
             let entry = entry.path().to_str().unwrap();
-            parse_save_json(&entry, &mut dir_accu, &mut file_accu);
+            parse_save_json(&entry, &mut dir_accu, &mut file_accu, &mut save_accu);
             // file_add_tx.send(entry.clone().to_string());
         }
     }
-    (dir_accu, file_accu)
+    (dir_accu, file_accu, save_accu)
 }
 
 fn get_save_watch_entries(savelocs: &Vec<SaveDir>) -> Vec<String> {
@@ -232,7 +284,7 @@ fn get_save_watch_entries(savelocs: &Vec<SaveDir>) -> Vec<String> {
 
 // crawl through saves listed from save files and send results to watcher thread
 fn find_saves(json_dir: &str, file_add_tx: &mpsc::Sender<HashmapCmd>) {
-    let (savelocs, savefiles) = get_save_descriptors(json_dir);
+    let (savelocs, savefiles, saves) = get_save_descriptors(json_dir);
     // let save_watch_entries = get_save_watch_entries(&savelocs);
     for e in savelocs {
         // println!("{}", e.dir);
@@ -242,6 +294,11 @@ fn find_saves(json_dir: &str, file_add_tx: &mpsc::Sender<HashmapCmd>) {
     for e in savefiles {
         // println!("{}", e.dir);
         file_add_tx.send(HashmapCmd::WatchFile(e));
+    }
+
+    for e in saves {
+        // println!("{}", e.dir);
+        file_add_tx.send(HashmapCmd::Watch(e));
     }
 }
 
