@@ -6,7 +6,7 @@ file could be determined by repeatedly chopping off the last part of the file an
 This would solve everything but two overlapping directories being registered, which seems like a reasonable restriction
 to the user and something that might be easy to validate at startup.
 
-single SaveLoc with contextual settings in json, figure out fields on the fly
+single SaveDir with contextual settings in json, figure out fields on the fly
 hashmap stores
 
 resolving same-name files when registering directories
@@ -18,21 +18,21 @@ register /a
 "preserve_structure": "true" (default: true)
 
 */
-use notify::{DebouncedEvent, Watcher, RecursiveMode, watcher};
+
+use notify::{watcher, DebouncedEvent, RecursiveMode, Watcher};
 use serde_json::{Result, Value};
-use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::fs;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 use structopt::StructOpt;
 use walkdir::WalkDir;
-use std::path::{PathBuf, Path};
 
 mod helper;
 
-struct SaveLoc {
+struct SaveDir {
     dir: PathBuf,
     filetypes: Vec<String>,
 }
@@ -42,11 +42,11 @@ struct SaveFile {
     sync_loc: PathBuf,
 }
 
-impl SaveLoc {
+impl SaveDir {
     #[allow(dead_code)]
     fn print(&self) {
         println!("dir:      {:?}", self.dir);
-        for j in 0 .. self.filetypes.len() {
+        for j in 0..self.filetypes.len() {
             println!("filetype: {}", self.filetypes[j]);
         }
     }
@@ -60,19 +60,68 @@ struct Cli {
 
 struct Savedata {
     // filemap: HashMap<String, String>,
-    saveloc: SaveLoc,
+    saveloc: SaveDir,
 }
 
 enum HashmapCmd {
-    WatchDir(SaveLoc),
+    WatchDir(SaveDir),
     WatchFile(SaveFile),
     Unwatch(String),
     Copy(PathBuf),
 }
 
-fn save_scanner(json_dir: &str,
-                file_scan_rx: mpsc::Receiver<notify::DebouncedEvent>,
-                file_add_tx: &mpsc::Sender<HashmapCmd>) -> Result<()> {
+fn interactive(json_dir: &str, file_add_tx: &mpsc::Sender<HashmapCmd>) {
+    loop {
+        println!("Enter command: ");
+        let mut input = String::new();
+        std::io::stdin().read_line(&mut input).unwrap();
+        let input = input.trim();
+        match input {
+            "s" => {
+                find_saves(json_dir, file_add_tx);
+            }
+            _ => (),
+        }
+    }
+}
+
+fn parse_save_json(json_file: &str, dir_accu: &mut Vec<SaveDir>, file_accu: &mut Vec<SaveFile>) {
+    let bytes = std::fs::read_to_string(json_file).unwrap();
+    let json: Value = serde_json::from_str(&bytes).unwrap();
+    let saves = json["saves"].as_array().unwrap();
+
+    for i in 0..saves.len() {
+        // json elements with the "dir" field populated are directories
+        if saves[i]["dir"] != Value::Null {
+            let mut save = SaveDir {
+                dir: PathBuf::from(helper::strip_quotes(saves[i]["dir"].as_str().unwrap())),
+                filetypes: vec![],
+            };
+            let filetypes = saves[i]["filetypes"].as_array().unwrap();
+            for j in 0..filetypes.len() {
+                save.filetypes
+                    .push(filetypes[j].as_str().unwrap().to_string());
+            }
+            dir_accu.push(save);
+        } else if saves[i]["file"] != Value::Null {
+            let save = SaveFile {
+                file: PathBuf::from(helper::strip_quotes(saves[i]["file"].as_str().unwrap())),
+                sync_loc: if saves[i]["sync_loc"] != Value::Null {
+                    PathBuf::from(helper::strip_quotes(saves[i]["sync_loc"].as_str().unwrap()))
+                } else {
+                    PathBuf::from("")
+                },
+            };
+            file_accu.push(save);
+        }
+    }
+}
+
+fn save_scanner(
+    json_dir: &str,
+    file_scan_rx: mpsc::Receiver<notify::DebouncedEvent>,
+    file_add_tx: &mpsc::Sender<HashmapCmd>,
+) -> Result<()> {
     // find_saves(json_dir, file_add_tx);
     loop {
         match file_scan_rx.recv() {
@@ -82,26 +131,37 @@ fn save_scanner(json_dir: &str,
                     println!("{:?}", p);
                     file_add_tx.send(HashmapCmd::Copy(p));
                 }
-                DebouncedEvent::NoticeWrite(p) => { println!("NoticeWrite {:?}", p) }
-                DebouncedEvent::Create(p) => { println!("Create {:?}", p) }
-                DebouncedEvent::Remove(p) => { println!("Remove {:?}", p) }
-                DebouncedEvent::NoticeRemove(p)  => { println!("NoticeRemove {:?}", p) }
-                DebouncedEvent::Rename(a, b) => { println!("Rename {:?} -> {:?}", a, b) }
-                _ => { () }
-           },
-           Err(e) => println!("watch error: {:?}", e),
+                DebouncedEvent::NoticeWrite(p) => {
+                    println!("NoticeWrite {:?}", p)
+                }
+                DebouncedEvent::Create(p) => {
+                    println!("Create {:?}", p)
+                }
+                DebouncedEvent::Remove(p) => {
+                    println!("Remove {:?}", p)
+                }
+                DebouncedEvent::NoticeRemove(p) => {
+                    println!("NoticeRemove {:?}", p)
+                }
+                DebouncedEvent::Rename(a, b) => {
+                    println!("Rename {:?} -> {:?}", a, b)
+                }
+                _ => (),
+            },
+            Err(e) => println!("watch error: {:?}", e),
         };
     }
 }
 
-fn save_watcher(sync_dir: &str,
-                file_scan_tx: std::sync::mpsc::Sender<notify::DebouncedEvent>,
-                file_add_rx:  std::sync::mpsc::Receiver<HashmapCmd>,) {
+fn save_watcher(
+    sync_dir: &str,
+    file_scan_tx: std::sync::mpsc::Sender<notify::DebouncedEvent>,
+    file_add_rx: std::sync::mpsc::Receiver<HashmapCmd>,
+) {
     let mut watcher = watcher(file_scan_tx, Duration::from_secs(1)).unwrap();
     let mut save_map: HashMap<String, Savedata> = HashMap::new();
     loop {
         match file_add_rx.recv().unwrap() {
-
             HashmapCmd::WatchFile(savefile) => {
                 watcher.watch(&savefile.file, RecursiveMode::NonRecursive);
             }
@@ -125,44 +185,17 @@ fn save_watcher(sync_dir: &str,
     }
 }
 
-fn parse_save_json( json_file: &str,
-                    dir_accu: &mut Vec<SaveLoc>,
-                    file_accu: &mut Vec<SaveFile>,) {
-    let bytes = std::fs::read_to_string(json_file).unwrap();
-    let json: Value = serde_json::from_str(&bytes).unwrap();
-    let saves = json["saves"].as_array().unwrap();
-
-    for i in 0 .. saves.len() {
-        // json elements with the "dir" field populated are directories
-        if saves[i]["dir"] != Value::Null {
-            let mut save = SaveLoc {
-                dir: PathBuf::from(helper::strip_quotes(saves[i]["dir"].as_str().unwrap())),
-                filetypes: vec![],
-            };
-            let filetypes = saves[i]["filetypes"].as_array().unwrap();
-            for j in 0 .. filetypes.len() {
-                save.filetypes.push(filetypes[j].as_str().unwrap().to_string());
-            }
-            dir_accu.push(save);
-        } else if saves[i]["file"] != Value::Null {
-            let save = SaveFile {
-                file:     PathBuf::from(helper::strip_quotes(saves[i]["file"].as_str().unwrap())),
-                sync_loc: if saves[i]["sync_loc"] != Value::Null
-                            { PathBuf::from(helper::strip_quotes(saves[i]["sync_loc"].as_str().unwrap())) } else
-                            { PathBuf::from("") },
-            };
-            file_accu.push(save);
-        }
-    }
-}
-
-// find all files in @json_dir that end in .json, return a vector of SaveLoc's from them
-fn get_save_descriptors(json_dir: &str) -> (Vec<SaveLoc>, Vec<SaveFile>) {
+// find all files in @json_dir that end in .json, return a vector of SaveDir's from them
+fn get_save_descriptors(json_dir: &str) -> (Vec<SaveDir>, Vec<SaveFile>) {
     let json_dir = helper::strip_quotes(json_dir);
-    let mut dir_accu: Vec<SaveLoc> = vec![];
+    let mut dir_accu: Vec<SaveDir> = vec![];
     let mut file_accu: Vec<SaveFile> = vec![];
 
-    for entry in WalkDir::new(json_dir).follow_links(true).into_iter().filter_map(|e| e.ok()) {
+    for entry in WalkDir::new(json_dir)
+        .follow_links(true)
+        .into_iter()
+        .filter_map(|e| e.ok())
+    {
         let f_name = entry.file_name().to_string_lossy();
 
         if f_name.ends_with(".json") {
@@ -174,12 +207,16 @@ fn get_save_descriptors(json_dir: &str) -> (Vec<SaveLoc>, Vec<SaveFile>) {
     (dir_accu, file_accu)
 }
 
-fn get_save_watch_entries(savelocs: &Vec<SaveLoc>) -> Vec<String> {
+fn get_save_watch_entries(savelocs: &Vec<SaveDir>) -> Vec<String> {
     let mut save_watch_entries: Vec<String> = vec![];
     // find all save files in each directory
     // add things to the hash map based on the settings from the savelocs
     for e in savelocs.iter() {
-        for entry in WalkDir::new(&e.dir).follow_links(true).into_iter().filter_map(|e| e.ok()) {
+        for entry in WalkDir::new(&e.dir)
+            .follow_links(true)
+            .into_iter()
+            .filter_map(|e| e.ok())
+        {
             let type_satisfy = false;
             for ftype in &e.filetypes {
                 let f_name = entry.file_name().to_string_lossy();
@@ -194,8 +231,7 @@ fn get_save_watch_entries(savelocs: &Vec<SaveLoc>) -> Vec<String> {
 }
 
 // crawl through saves listed from save files and send results to watcher thread
-fn find_saves(  json_dir: &str,
-                file_add_tx: &mpsc::Sender<HashmapCmd>) {
+fn find_saves(json_dir: &str, file_add_tx: &mpsc::Sender<HashmapCmd>) {
     let (savelocs, savefiles) = get_save_descriptors(json_dir);
     // let save_watch_entries = get_save_watch_entries(&savelocs);
     for e in savelocs {
@@ -209,22 +245,6 @@ fn find_saves(  json_dir: &str,
     }
 }
 
-fn interactive( json_dir: &str,
-                file_add_tx: &mpsc::Sender<HashmapCmd>) {
-    loop {
-        println!("Enter command: ");
-        let mut input = String::new();
-        std::io::stdin().read_line(&mut input).unwrap();
-        let input = input.trim();
-        match input {
-            "s" => {
-                find_saves(json_dir, file_add_tx);
-            },
-            _ => ()
-        }
-    }
-}
-
 fn main() {
     let args = Cli::from_args();
     let parse = helper::parse_json(&args.settings).unwrap();
@@ -234,7 +254,7 @@ fn main() {
     let sync_dir = helper::strip_quotes(&parse["sync_dir"].to_string());
 
     let (file_scan_tx, file_scan_rx) = mpsc::channel();
-    let (file_add_tx,  file_add_rx) =  mpsc::channel();
+    let (file_add_tx, file_add_rx) = mpsc::channel();
     let file_add_tx2 = file_add_tx.clone();
 
     let save_scanner_handle = thread::spawn(move || {

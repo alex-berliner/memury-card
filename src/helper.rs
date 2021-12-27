@@ -20,6 +20,7 @@ pub fn strip_quotes(s: &str) -> String {
     // TODO: this doesn't do what the function says it does
     s.trim_matches('"').to_string()
 }
+
 #[allow(dead_code)]
 pub fn print_type_of<T>(_: &T) {
     println!("{}", std::any::type_name::<T>())
