@@ -174,34 +174,56 @@ fn save_scanner(
     }
 }
 
+fn find_appropriate_savedef(p: &PathBuf, save_map: &HashMap<PathBuf, SaveDef>) -> SaveDef {
+    println!("find_appropriate_savedef");
+    let mut p = p.clone();
+    // save_map.get()
+    let ret = SaveDef {
+        path: PathBuf::from(""),
+        options: SaveOpts::File(SaveFile {
+            file: PathBuf::from(""),
+            sync_loc: PathBuf::from(""),
+        })
+    };
+
+    if !save_map.contains_key(&p) {
+        p.pop();
+        println!("{:?}", p);
+    }
+
+    ret
+}
+
 fn save_watcher(
     sync_dir: &str,
     file_scan_tx: std::sync::mpsc::Sender<notify::DebouncedEvent>,
     file_add_rx: std::sync::mpsc::Receiver<HashmapCmd>,
 ) {
     let mut watcher = watcher(file_scan_tx, Duration::from_secs(1)).unwrap();
-    let mut save_map: HashMap<String, SaveDef> = HashMap::new();
+    let mut save_map: HashMap<PathBuf, SaveDef> = HashMap::new();
     loop {
         match file_add_rx.recv().unwrap() {
             HashmapCmd::Watch(save) => {
                 save.print();
-                let err = watcher.watch(&save.path, RecursiveMode::Recursive);
+                let p = save.path.clone();
+                let err = watcher.watch(&p, RecursiveMode::Recursive);
+                save_map.entry(p.clone()).or_insert(save);
                 // TOOD: if err...
-                let str_path = save.path.clone().into_os_string().into_string().unwrap();
-                save_map.entry(str_path.to_string()).or_insert(save);
+                // println!("{:?}", save_map.contains_key(&save.path));
             }
             HashmapCmd::Unwatch(rmpath) => {
                 // watcher.unwatch(&entry).unwrap();
             }
             HashmapCmd::Copy(src) => {
                 // dont copy right away, poll from hashmap to get settings to see whehter to append something, etc
-                let mut dst = PathBuf::from(sync_dir);
-                let src_file_name = src.file_name().expect("this was probably not a file");
-                dst.push(&src_file_name);
-                dst.set_extension(src.extension().unwrap());
-                println!("copy {:?} into save manager at {:?}", src, dst);
-                std::fs::create_dir_all(&dst);
-                std::fs::copy(&src, &dst);
+                let x = find_appropriate_savedef(&src, &save_map);
+                // let mut dst = PathBuf::from(sync_dir);
+                // let src_file_name = src.file_name().expect("this was probably not a file");
+                // dst.push(&src_file_name);
+                // dst.set_extension(src.extension().unwrap());
+                // println!("copy {:?} into save manager at {:?}", src, dst);
+                // std::fs::create_dir_all(&dst);
+                // std::fs::copy(&src, &dst);
             }
         }
     }
