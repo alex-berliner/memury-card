@@ -1,3 +1,5 @@
+// Emury Card
+// Memury Card
 /*
 watcher can watch paths and files but the events only carry the exact file that was modified, not the path that registered
 the file. this makes it hard to know which rules to apply to the file, particularly with path-watched files because the
@@ -94,10 +96,21 @@ struct SaveDir {
     files: HashSet<PathBuf>,
 }
 
+impl SaveDir {
+    fn has_type(&self, p: &PathBuf) -> bool{
+        let ext = p.extension().unwrap().to_str().unwrap();
+        for ftype in &self.filetypes {
+            if ftype == ext {
+                return true;
+            }
+        }
+        return false;
+    }
+}
+
 enum SaveOpts {
     File(SaveFile),
     Dir(SaveDir),
-    DirFile(),
 }
 
 struct SaveDef {
@@ -124,11 +137,6 @@ fn save_scanner(
                 // update watch list with newly created file
                 DebouncedEvent::Create(p) => {
                     println!("Create {:?}", p);
-                    let towatch = SaveDef {
-                        path: p,
-                        options: SaveOpts::DirFile(),
-                    };
-                    file_add_tx.send(HashmapCmd::Watch(towatch));
                 }
                 DebouncedEvent::Remove(p) => {
                     println!("Remove {:?}", p);
@@ -146,26 +154,16 @@ fn save_scanner(
     }
 }
 
-fn find_appropriate_savedef(p: &PathBuf, save_map: &HashMap<PathBuf, SaveDef>) -> SaveDef {
-    println!("find_appropriate_savedef");
+fn find_appropriate_savedef_path(p: &PathBuf, save_map: &HashMap<PathBuf, SaveDef>) -> PathBuf {
     let mut p = p.clone();
-    // save_map.get()
-    let ret = SaveDef {
-        path: PathBuf::from(""),
-        options: SaveOpts::File(SaveFile {
-            file: PathBuf::from(""),
-            sync_loc: PathBuf::from(""),
-        })
-    };
+    let root = PathBuf::from("/");
+    let empty = PathBuf::from("");
 
-    if !save_map.contains_key(&p) {
+    while !save_map.contains_key(&p) && p != root && p != empty {
         p.pop();
-        println!("{:?}", p);
-    } else {
-        println!("it contains");
     }
 
-    ret
+    p
 }
 
 fn save_watcher(
@@ -191,14 +189,23 @@ fn save_watcher(
             }
             HashmapCmd::Copy(src) => {
                 // dont copy right away, poll from hashmap to get settings to see whehter to append something, etc
-                let x = find_appropriate_savedef(&src, &save_map);
-                let mut dst = PathBuf::from(sync_dir);
-                let src_file_name = src.file_name().expect("this was probably not a file");
-                dst.push(&src_file_name);
-                dst.set_extension(src.extension().unwrap());
-                println!("copy {:?} into save manager at {:?}", src, dst);
-                std::fs::create_dir_all(&dst);
-                std::fs::copy(&src, &dst);
+                let p = find_appropriate_savedef_path(&src, &save_map);
+                let save_reg = save_map.get(&p).unwrap();
+
+                let has_type = match &save_reg.options {
+                    SaveOpts::Dir(e) => e.has_type(&src),
+                    _ => true,
+                };
+
+                if has_type {
+                    let mut dst = PathBuf::from(sync_dir);
+                    let src_file_name = src.file_name().expect("this was probably not a file");
+                    dst.push(&src_file_name);
+                    dst.set_extension(src.extension().unwrap());
+                    println!("copy {:?} into save manager at {:?}", src, dst);
+                    std::fs::create_dir_all(&dst);
+                    std::fs::copy(&src, &dst);
+                }
             }
         }
     }
@@ -282,51 +289,10 @@ fn get_save_watch_entries(savelocs: &Vec<SaveDir>) -> Vec<String> {
     save_watch_entries
 }
 
-fn get_dir_path_files(saves: &Vec<SaveDef>) -> Vec<SaveDef> {
-    let mut retsaves: Vec<SaveDef> = vec![];
-    for e in saves {
-        if matches!(e.options, SaveOpts::Dir(_)) {
-            // e.print();
-            for entry in WalkDir::new(&e.path).follow_links(true).into_iter().filter_map(|e| e.ok()) {
-                // println!("zzzzzzzzzzz {:?}", entry);
-                let type_satisfy = false;
-                match &e.options {
-                    SaveOpts::DirFile() => { /* println!("DirFile") */ }
-                    SaveOpts::File(ee)  => { /* println!("File") */ }
-                    SaveOpts::Dir(ee) => {
-                        // println!("ee");
-                        for ftype in &ee.filetypes {
-                            let f_name = entry.file_name().to_string_lossy();
-                            if f_name.ends_with(ftype) {
-                                println!("{:?} {}: {}", e.path, ftype, entry.path().to_str().unwrap());
-                                // save_watch_entries.push(entry.path().to_str().unwrap().to_string());
-                                // println!("{:?}", f_name);
-                                retsaves.push(SaveDef {
-                                    path: entry.path().to_path_buf(),
-                                    options: SaveOpts::DirFile(),
-                                });
-                            }
-                        }
-
-                    }
-                }
-            }
-        }
-    }
-
-    retsaves
-}
-
 // crawl through saves listed from save files and send results to watcher thread
 fn find_json_settings(json_dir: &str, file_add_tx: &mpsc::Sender<HashmapCmd>) {
     let saves = get_json_settings_descriptors(json_dir);
-
-    let dir_saves = get_dir_path_files(&saves);
-
     for e in saves {
-        file_add_tx.send(HashmapCmd::Watch(e));
-    }
-    for e in dir_saves {
         file_add_tx.send(HashmapCmd::Watch(e));
     }
 }
