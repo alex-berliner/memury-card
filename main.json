@@ -1,0 +1,39 @@
+{
+    "saves": [
+        {
+            "dir": "/home/alex/Dropbox/rand",
+            "preserve_structure": true,
+            "filetypes": [
+                "sav",
+                "ss1",
+                "txt"
+            ]
+        },
+        {
+            "dir": "/home/alex/Dropbox/bland",
+            "preserve_structure": true,
+            "sync_loc": "",
+            "filetypes": [
+                "sav",
+                "ss1",
+                "txt"
+            ]
+        },
+        {
+            "file": "/home/alex/.local/share/dolphin-emu/GC/MemoryCardA.USA.raw",
+            "sync_loc": ""
+        },
+        {
+            "file": "/home/alex/Dropbox/rand/bluh.txt",
+            "sync_loc": "insert"
+        },
+        {
+            "file": "/home/alex/Dropbox/rand/a/b/c.txt",
+            "sync_loc": "insertb"
+        },
+        {
+            "file": "/home/alex/Dropbox/rand/a/c/c.txt",
+            "sync_loc": "insertc"
+        }
+    ]
+}

@@ -5,7 +5,8 @@
             "preserve_structure": true,
             "filetypes": [
                 "sav",
-                "ss1"
+                "ss1",
+                "txt"
             ]
         }
     ]

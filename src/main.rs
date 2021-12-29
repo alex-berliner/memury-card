@@ -19,8 +19,6 @@ register /a
 
 "preserve_structure": "true" (default: true)
 
-TDD
-
 */
 
 use notify::{watcher, DebouncedEvent, RecursiveMode, Watcher};
@@ -36,6 +34,36 @@ use walkdir::WalkDir;
 
 mod helper;
 
+#[derive(StructOpt)]
+struct Cli {
+    #[structopt(default_value = "settings.json")]
+    settings: std::path::PathBuf,
+}
+
+enum HashmapCmd {
+    Watch(SaveDef),
+    Unwatch(String),
+    Copy(PathBuf),
+}
+
+struct SaveFile {
+    sync_loc: PathBuf,
+}
+
+struct SaveDir {
+    filetypes: Vec<String>,
+    files: HashSet<PathBuf>,
+}
+
+enum SaveOpts {
+    File(SaveFile),
+    Dir(SaveDir),
+}
+
+struct SaveDef {
+    path: PathBuf,
+    options: SaveOpts,
+}
 
 impl SaveDef {
     fn print(&self) {
@@ -46,57 +74,11 @@ impl SaveDef {
 impl SaveDir {
     #[allow(dead_code)]
     fn print(&self) {
-        println!("dir:      {:?}", self.dir);
         for j in 0..self.filetypes.len() {
             println!("filetype: {}", self.filetypes[j]);
         }
     }
-}
 
-#[derive(StructOpt)]
-struct Cli {
-    #[structopt(default_value = "settings.json")]
-    settings: std::path::PathBuf,
-}
-
-struct Savedata {
-    // filemap: HashMap<String, String>,
-    saveloc: SaveDir,
-}
-
-enum HashmapCmd {
-    Watch(SaveDef),
-    Unwatch(String),
-    Copy(PathBuf),
-}
-
-fn interactive(json_dir: &str, file_add_tx: &mpsc::Sender<HashmapCmd>) {
-    loop {
-        println!("Enter command: ");
-        let mut input = String::new();
-        std::io::stdin().read_line(&mut input).unwrap();
-        let input = input.trim();
-        match input {
-            "s" => {
-                find_json_settings(json_dir, file_add_tx);
-            }
-            _ => (),
-        }
-    }
-}
-
-struct SaveFile {
-    file: PathBuf,
-    sync_loc: PathBuf,
-}
-
-struct SaveDir {
-    dir: PathBuf,
-    filetypes: Vec<String>,
-    files: HashSet<PathBuf>,
-}
-
-impl SaveDir {
     fn has_type(&self, p: &PathBuf) -> bool{
         let ext = p.extension().unwrap().to_str().unwrap();
         for ftype in &self.filetypes {
@@ -108,14 +90,20 @@ impl SaveDir {
     }
 }
 
-enum SaveOpts {
-    File(SaveFile),
-    Dir(SaveDir),
-}
-
-struct SaveDef {
-    path: PathBuf,
-    options: SaveOpts,
+fn interactive(json_dir: &str, file_add_tx: &mpsc::Sender<HashmapCmd>) {
+    find_json_settings(json_dir, file_add_tx);
+    // loop {
+    //     println!("Enter command: ");
+    //     let mut input = String::new();
+    //     std::io::stdin().read_line(&mut input).unwrap();
+    //     let input = input.trim();
+    //     match input {
+    //         "s" => {
+    //             find_json_settings(json_dir, file_add_tx);
+    //         }
+    //         _ => (),
+    //     }
+    // }
 }
 
 fn save_scanner(
@@ -132,7 +120,7 @@ fn save_scanner(
                     file_add_tx.send(HashmapCmd::Copy(p));
                 }
                 DebouncedEvent::NoticeWrite(p) => {
-                    println!("NoticeWrite {:?}", p);
+                    // println!("NoticeWrite {:?}", p);
                 }
                 // update watch list with newly created file
                 DebouncedEvent::Create(p) => {
@@ -188,7 +176,6 @@ fn save_watcher(
                 // watcher.unwatch(&entry).unwrap();
             }
             HashmapCmd::Copy(src) => {
-                // dont copy right away, poll from hashmap to get settings to see whehter to append something, etc
                 let p = find_appropriate_savedef_path(&src, &save_map);
                 let save_reg = save_map.get(&p).unwrap();
 
@@ -223,7 +210,6 @@ fn parse_save_json(json_file: &str, save_accu: &mut Vec<SaveDef>) {
         let mut saveopt = if is_dir {
             path.push(helper::strip_quotes(saves[i]["dir"].as_str().unwrap()));
             let mut savedir = SaveDir {
-                dir: PathBuf::from("/"), //TODO rm?
                 filetypes: vec![],
                 files: HashSet::new(),
             };
@@ -235,7 +221,6 @@ fn parse_save_json(json_file: &str, save_accu: &mut Vec<SaveDef>) {
         } else {
             path.push(helper::strip_quotes(saves[i]["file"].as_str().unwrap()));
             let savefile = SaveFile {
-                file: PathBuf::from("/x.txt"),
                 sync_loc: PathBuf::from("asdasdas"),
             };
             SaveOpts::File(savefile)
@@ -267,26 +252,6 @@ fn get_json_settings_descriptors(json_dir: &str) -> Vec<SaveDef> {
         }
     }
     save_accu
-}
-
-fn get_save_watch_entries(savelocs: &Vec<SaveDir>) -> Vec<String> {
-    let mut save_watch_entries: Vec<String> = vec![];
-    // find all save files in each directory
-    // add things to the hash map based on the settings from the savelocs
-    for e in savelocs.iter() {
-        for entry in WalkDir::new(&e.dir).follow_links(true).into_iter().filter_map(|e| e.ok())
-        {
-            let type_satisfy = false;
-            for ftype in &e.filetypes {
-                let f_name = entry.file_name().to_string_lossy();
-                if f_name.ends_with(ftype) {
-                    // println!("{}: {}", ftype, entry.path().to_str().unwrap());
-                    save_watch_entries.push(entry.path().to_str().unwrap().to_string());
-                }
-            }
-        }
-    }
-    save_watch_entries
 }
 
 // crawl through saves listed from save files and send results to watcher thread
