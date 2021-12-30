@@ -22,7 +22,7 @@ register /a
 */
 
 use notify::{watcher, DebouncedEvent, RecursiveMode, Watcher};
-use serde_json::{Result, Value};
+use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -110,7 +110,7 @@ fn save_scanner(
     json_dir: &str,
     file_scan_rx: mpsc::Receiver<notify::DebouncedEvent>,
     file_add_tx: &mpsc::Sender<HashmapCmd>,
-) -> Result<()> {
+) {
     loop {
         match file_scan_rx.recv() {
             Ok(event) => match event {
@@ -142,7 +142,10 @@ fn save_scanner(
     }
 }
 
-fn find_appropriate_savedef_path(p: &PathBuf, save_map: &HashMap<PathBuf, SaveDef>) -> PathBuf {
+// look for the path as registered in the save_map. both files and directories can be registered so if it's a directory
+// we need to chop off portions of the file path until we either find the path that the file was registered under or
+// get to the root (ie bad file). files under paths aren't registered, only find events when the dirs has an event
+fn find_appropriate_savedef_path(p: &PathBuf, save_map: &HashMap<PathBuf, SaveDef>) -> Result<PathBuf, String> {
     let mut p = p.clone();
     let root = PathBuf::from("/");
     let empty = PathBuf::from("");
@@ -151,8 +154,17 @@ fn find_appropriate_savedef_path(p: &PathBuf, save_map: &HashMap<PathBuf, SaveDe
         p.pop();
     }
 
-    p
+    if !save_map.contains_key(&p) {
+        return Err("Path not in save map".to_string());
+    }
+
+    Ok(p)
 }
+
+// fn resret() -> Result<PathBuf, String>{
+//     // Ok(PathBuf::from("/"))
+//     Err("".to_string())
+// }
 
 fn save_watcher(
     sync_dir: &str,
@@ -176,22 +188,27 @@ fn save_watcher(
                 // watcher.unwatch(&entry).unwrap();
             }
             HashmapCmd::Copy(src) => {
-                let p = find_appropriate_savedef_path(&src, &save_map);
-                let save_reg = save_map.get(&p).unwrap();
+                match find_appropriate_savedef_path(&src, &save_map) {
+                    Ok(p) => {
+                        let err = format!("could not find {:?}", p);
+                        let save_reg = save_map.get(&p).expect(&err);
 
-                let has_type = match &save_reg.options {
-                    SaveOpts::Dir(e) => e.has_type(&src),
-                    _ => true,
-                };
+                        let has_type = match &save_reg.options {
+                            SaveOpts::Dir(e) => e.has_type(&src),
+                            _ => true,
+                        };
 
-                if has_type {
-                    let mut dst = PathBuf::from(sync_dir);
-                    let src_file_name = src.file_name().expect("this was probably not a file");
-                    dst.push(&src_file_name);
-                    dst.set_extension(src.extension().unwrap());
-                    println!("copy {:?} into save manager at {:?}", src, dst);
-                    std::fs::create_dir_all(&dst);
-                    std::fs::copy(&src, &dst);
+                        if has_type {
+                            let mut dst = PathBuf::from(sync_dir);
+                            let src_file_name = src.file_name().expect("this was probably not a file");
+                            dst.push(&src_file_name);
+                            dst.set_extension(src.extension().unwrap());
+                            println!("copy {:?} into save manager at {:?}", src, dst);
+                            std::fs::create_dir_all(&dst);
+                            std::fs::copy(&src, &dst);
+                        }
+                    }
+                    _ => { println!("bad path"); }
                 }
             }
         }
