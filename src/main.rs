@@ -90,6 +90,7 @@ impl SaveDir {
     }
 }
 
+// cli thread
 fn interactive(json_dir: &str, file_add_tx: &mpsc::Sender<HashmapCmd>) {
     find_json_settings(json_dir, file_add_tx);
     // loop {
@@ -106,6 +107,7 @@ fn interactive(json_dir: &str, file_add_tx: &mpsc::Sender<HashmapCmd>) {
     // }
 }
 
+// thread to handle events coming in on the file watcher
 fn save_scanner(
     json_dir: &str,
     file_scan_rx: mpsc::Receiver<notify::DebouncedEvent>,
@@ -161,11 +163,7 @@ fn find_appropriate_savedef_path(p: &PathBuf, save_map: &HashMap<PathBuf, SaveDe
     Ok(p)
 }
 
-// fn resret() -> Result<PathBuf, String>{
-//     // Ok(PathBuf::from("/"))
-//     Err("".to_string())
-// }
-
+// thread function for file io heavy lifting
 fn save_watcher(
     sync_dir: &str,
     file_scan_tx: std::sync::mpsc::Sender<notify::DebouncedEvent>,
@@ -215,6 +213,7 @@ fn save_watcher(
     }
 }
 
+// parse user generated json files indicating location of content storage areas
 fn parse_save_json(json_file: &str, save_accu: &mut Vec<SaveDef>) {
     let bytes = std::fs::read_to_string(json_file).unwrap();
     let json: Value = serde_json::from_str(&bytes).unwrap();
