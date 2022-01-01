@@ -1,5 +1,5 @@
 {
-    "tracker_dir": "C:\\Users\\Alex\\Code\\savesync\\tracker",
+    "tracker_dir": "tracker",
     "sync_dir": "C:\\Users\\Alex\\Dropbox\\sync",
     "ignore_filetypes": [
         "iso",

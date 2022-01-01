@@ -1,2 +1,2 @@
-# cargo run -- /home/alex/Code/savesync/settings.json
+cd assets
 cargo run

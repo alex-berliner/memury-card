@@ -36,12 +36,6 @@ use walkdir::WalkDir;
 
 mod helper;
 
-#[derive(StructOpt)]
-struct Cli {
-    #[structopt(default_value = "settings.json")]
-    settings: std::path::PathBuf,
-}
-
 enum HashmapCmd {
     Watch(SaveDef),
     Unwatch(String),
@@ -301,8 +295,7 @@ fn find_json_settings(json_dir: &str, file_add_tx: &mpsc::Sender<HashmapCmd>) {
 }
 
 fn main() {
-    let args = Cli::from_args();
-    let parse = helper::parse_json(&args.settings).unwrap();
+    let parse = helper::parse_json(&helper::get_settings_filepath()).unwrap();
     let tracker_dir1 = parse["tracker_dir"].to_string();
     let tracker_dir2 = tracker_dir1.clone();
 
@@ -321,6 +314,8 @@ fn main() {
     let interactive_handle = thread::spawn(move || {
         interactive(&tracker_dir2, &file_add_tx2);
     });
+
+    println!("{:?}", helper::get_settings_filepath());
 
     save_scanner_handle.join().unwrap();
     save_watcher_handle.join().unwrap();
