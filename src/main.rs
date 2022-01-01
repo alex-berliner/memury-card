@@ -1,5 +1,7 @@
+// EMUry Card
 // Emury Card
 // Memury Card
+// mEMUry Card
 /*
 watcher can watch paths and files but the events only carry the exact file that was modified, not the path that registered
 the file. this makes it hard to know which rules to apply to the file, particularly with path-watched files because the
@@ -46,8 +48,10 @@ enum HashmapCmd {
     Copy(PathBuf),
 }
 
+struct Empty {
+}
+
 struct SaveFile {
-    sync_loc: PathBuf,
 }
 
 struct SaveDir {
@@ -62,6 +66,7 @@ enum SaveOpts {
 
 struct SaveDef {
     path: PathBuf,
+    sync_loc: PathBuf,
     options: SaveOpts,
 }
 
@@ -190,7 +195,8 @@ fn save_watcher(
                     Ok(p) => {
                         let err = format!("could not find {:?}", p);
                         let save_reg = save_map.get(&p).expect(&err);
-
+                        let mut sync_loc = PathBuf::from("");
+                        sync_loc.push(save_reg.sync_loc.clone());
                         let has_type = match &save_reg.options {
                             SaveOpts::Dir(e) => e.has_type(&src),
                             _ => true,
@@ -198,6 +204,7 @@ fn save_watcher(
 
                         if has_type {
                             let mut dst = PathBuf::from(sync_dir);
+                            dst.push(sync_loc);
                             let src_file_name = src.file_name().expect("this was probably not a file");
                             dst.push(&src_file_name);
                             dst.set_extension(src.extension().unwrap());
@@ -206,7 +213,9 @@ fn save_watcher(
                             std::fs::copy(&src, &dst);
                         }
                     }
-                    _ => { println!("bad path"); }
+                    _ => {
+                        println!("bad path");
+                    }
                 }
             }
         }
@@ -223,6 +232,7 @@ fn parse_save_json(json_file: &str, save_accu: &mut Vec<SaveDef>) {
         // json elements with the "dir" field populated are directories
         let mut path = PathBuf::new();
         let is_dir = saves[i]["dir"] != Value::Null;
+        let sync_loc = PathBuf::from(helper::strip_quotes(saves[i]["sync_loc"].as_str().unwrap()));
         let mut saveopt = if is_dir {
             path.push(helper::strip_quotes(saves[i]["dir"].as_str().unwrap()));
             let mut savedir = SaveDir {
@@ -237,12 +247,12 @@ fn parse_save_json(json_file: &str, save_accu: &mut Vec<SaveDef>) {
         } else {
             path.push(helper::strip_quotes(saves[i]["file"].as_str().unwrap()));
             let savefile = SaveFile {
-                sync_loc: PathBuf::from("asdasdas"),
             };
             SaveOpts::File(savefile)
         };
         let savedef = SaveDef {
             path: path,
+            sync_loc: sync_loc,
             options: saveopt,
         };
         save_accu.push(savedef);

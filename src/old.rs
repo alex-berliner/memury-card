@@ -165,7 +165,6 @@ fn inner_map() {
     // if file is in save_map, do watch add, else do watch remove
 }
 
-
 fn get_save_watch_entries(savelocs: &Vec<SaveDir>) -> Vec<String> {
     let mut save_watch_entries: Vec<String> = vec![];
     // find all save files in each directory

@@ -1,18 +1,7 @@
 {
     "saves": [
         {
-            "dir": "/home/alex/Dropbox/rand",
-            "preserve_structure": true,
-            "filetypes": [
-                "sav",
-                "ss1",
-                "txt"
-            ]
-        },
-        {
             "dir": "/home/alex/Dropbox/bland",
-            "preserve_structure": true,
-            "sync_loc": "",
             "filetypes": [
                 "sav",
                 "ss1",

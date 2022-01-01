@@ -2,12 +2,16 @@
     "saves": [
         {
             "dir": "/home/alex/Dropbox/rand",
-            "preserve_structure": true,
+            "sync_loc": "insert2",
             "filetypes": [
                 "sav",
                 "ss1",
                 "txt"
             ]
+        },
+        {
+            "file": "/home/alex/Dropbox/rand/bluh.txt",
+            "sync_loc": "insert2"
         }
     ]
 }
