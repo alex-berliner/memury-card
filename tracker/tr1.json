@@ -8,21 +8,6 @@
                 "sav",
                 "ss1"
             ]
-        },
-        {
-            "name": "",
-            "dir": "/home/alex/Dropbox/rand",
-            "sync_loc": "insert2",
-            "filetypes": [
-                "sav",
-                "ss1",
-                "txt"
-            ]
-        },
-        {
-            "name": "",
-            "file": "/home/alex/Dropbox/rand/bluh.txt",
-            "sync_loc": "insert2"
         }
     ]
 }

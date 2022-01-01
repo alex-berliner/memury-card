@@ -1,13 +1,6 @@
-// use notify::{DebouncedEvent, Watcher, RecursiveMode, watcher};
 use serde_json::{Result, Value};
 use sha2::{Digest, Sha256};
-// use std::collections::HashMap;
 use std::fs;
-// use std::sync::mpsc;
-// use std::thread;
-// use std::time::Duration;
-// use structopt::StructOpt;
-// use walkdir::WalkDir;
 use std::path::{PathBuf, Path};
 
 pub fn parse_json(p: &std::path::PathBuf) -> Result<Value> {
