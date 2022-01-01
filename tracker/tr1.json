@@ -1,6 +1,16 @@
 {
     "saves": [
         {
+            "name": "mgba",
+            "dir": "C:\\ROMs\\GBA",
+            "sync_loc": "gba",
+            "filetypes": [
+                "sav",
+                "ss1"
+            ]
+        },
+        {
+            "name": "",
             "dir": "/home/alex/Dropbox/rand",
             "sync_loc": "insert2",
             "filetypes": [
@@ -10,6 +20,7 @@
             ]
         },
         {
+            "name": "",
             "file": "/home/alex/Dropbox/rand/bluh.txt",
             "sync_loc": "insert2"
         }

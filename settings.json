@@ -1,6 +1,6 @@
 {
-    "tracker_dir": "/home/alex/Code/savesync/tracker",
-    "sync_dir": "/home/alex/Dropbox/saves",
+    "tracker_dir": "C:\\Users\\Alex\\Code\\savesync\\tracker",
+    "sync_dir": "C:\\Users\\Alex\\Dropbox\\sync",
     "ignore_filetypes": [
         "iso",
         "gba"

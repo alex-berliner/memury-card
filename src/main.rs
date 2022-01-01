@@ -65,6 +65,7 @@ enum SaveOpts {
 }
 
 struct SaveDef {
+    name: String,
     path: PathBuf,
     sync_loc: PathBuf,
     options: SaveOpts,
@@ -98,18 +99,21 @@ impl SaveDir {
 // cli thread
 fn interactive(json_dir: &str, file_add_tx: &mpsc::Sender<HashmapCmd>) {
     find_json_settings(json_dir, file_add_tx);
-    // loop {
-    //     println!("Enter command: ");
-    //     let mut input = String::new();
-    //     std::io::stdin().read_line(&mut input).unwrap();
-    //     let input = input.trim();
-    //     match input {
-    //         "s" => {
-    //             find_json_settings(json_dir, file_add_tx);
-    //         }
-    //         _ => (),
-    //     }
-    // }
+    loop {
+        println!("Enter command: ");
+        let mut input = String::new();
+        std::io::stdin().read_line(&mut input).unwrap();
+        let input = input.trim();
+        match input {
+            // "s" => {
+            //     find_json_settings(json_dir, file_add_tx);
+            // }
+            "s" => {
+                find_json_settings(json_dir, file_add_tx);
+            }
+            _ => (),
+        }
+    }
 }
 
 // thread to handle events coming in on the file watcher
@@ -182,6 +186,9 @@ fn save_watcher(
                 print!("watch ");
                 save.print();
                 let p = save.path.clone();
+                if !p.exists() {
+                    println!("{:?} doesn't exist", p);
+                }
                 let err = watcher.watch(&p, RecursiveMode::Recursive);
                 save_map.entry(p.clone()).or_insert(save);
                 // TOOD: if err...
@@ -204,17 +211,20 @@ fn save_watcher(
 
                         if has_type {
                             let mut dst = PathBuf::from(sync_dir);
-                            dst.push(sync_loc);
                             let src_file_name = src.file_name().expect("this was probably not a file");
+
+                            dst.push(sync_loc);
+                            dst.set_extension("");
+                            std::fs::create_dir_all(&dst);
+
                             dst.push(&src_file_name);
                             dst.set_extension(src.extension().unwrap());
                             println!("copy {:?} into save manager at {:?}", src, dst);
-                            std::fs::create_dir_all(&dst);
                             std::fs::copy(&src, &dst);
                         }
                     }
                     _ => {
-                        println!("bad path");
+                        println!("bad path {:?}", src);
                     }
                 }
             }
@@ -232,6 +242,7 @@ fn parse_save_json(json_file: &str, save_accu: &mut Vec<SaveDef>) {
         // json elements with the "dir" field populated are directories
         let mut path = PathBuf::new();
         let is_dir = saves[i]["dir"] != Value::Null;
+        let name = helper::strip_quotes(saves[i]["name"].as_str().unwrap());
         let sync_loc = PathBuf::from(helper::strip_quotes(saves[i]["sync_loc"].as_str().unwrap()));
         let mut saveopt = if is_dir {
             path.push(helper::strip_quotes(saves[i]["dir"].as_str().unwrap()));
@@ -251,6 +262,7 @@ fn parse_save_json(json_file: &str, save_accu: &mut Vec<SaveDef>) {
             SaveOpts::File(savefile)
         };
         let savedef = SaveDef {
+            name: name,
             path: path,
             sync_loc: sync_loc,
             options: saveopt,
