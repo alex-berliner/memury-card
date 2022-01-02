@@ -100,6 +100,7 @@ impl SaveDir {
 // cli thread
 fn interactive(json_dir: &str, file_op_tx: &mpsc::Sender<FileOpCmd>) {
     find_json_settings(json_dir, file_op_tx);
+    file_op_tx.send(FileOpCmd::Scan());
     loop {
         println!("Enter command: ");
         let mut input = String::new();
@@ -123,17 +124,13 @@ fn save_scanner(
     loop {
         match file_scan_rx.recv() {
             Ok(event) => match event {
-                DebouncedEvent::Write(p) | DebouncedEvent::Chmod(p) => {
+                DebouncedEvent::Write(p) | DebouncedEvent::Chmod(p) | DebouncedEvent::Create(p) => {
                     let p = PathBuf::from(p);
                     println!("{:?}", p);
                     file_op_tx.send(FileOpCmd::Copy(p));
                 }
                 DebouncedEvent::NoticeWrite(p) => {
                     // println!("NoticeWrite {:?}", p);
-                }
-                // update watch list with newly created file
-                DebouncedEvent::Create(p) => {
-                    println!("Create {:?}", p);
                 }
                 DebouncedEvent::Remove(p) => {
                     println!("Remove {:?}", p);
@@ -156,12 +153,8 @@ fn save_scanner(
 // get to the root (ie bad file). files under paths aren't registered, only find events when the dirs has an event
 fn find_appropriate_savedef_path(p: &PathBuf, save_map: &HashMap<PathBuf, SaveDef>) -> Result<PathBuf, String> {
     let mut p = p.clone();
-    let root = PathBuf::from("/");
-    let empty = PathBuf::from("");
-    let c = PathBuf::from("C:\\");
-    let g = PathBuf::from("G:\\");
 
-    while !save_map.contains_key(&p) && p != root && p != empty && p != c && p != g {
+    while !save_map.contains_key(&p) && p.parent() != None {
         p.pop();
     }
 
@@ -192,8 +185,7 @@ fn save_watcher(
                 }
                 let err = watcher.watch(&p, RecursiveMode::Recursive);
                 save_map.entry(p.clone()).or_insert(save);
-                // TOOD: if err...
-                // println!("{:?}", save_map.contains_key(&save.path));
+                // TODO: if err...
             }
             FileOpCmd::Unwatch(rmpath) => {
                 // watcher.unwatch(&entry).unwrap();
@@ -298,7 +290,6 @@ fn get_json_settings_descriptors(json_dir: &str) -> Vec<SaveDef> {
         if f_name.ends_with(".json") {
             let entry = entry.path().to_str().unwrap();
             parse_save_json(&entry, &mut save_accu);
-            // file_op_tx.send(entry.clone().to_string());
         }
     }
     save_accu
@@ -310,10 +301,6 @@ fn find_json_settings(json_dir: &str, file_op_tx: &mpsc::Sender<FileOpCmd>) {
     for e in saves {
         file_op_tx.send(FileOpCmd::Watch(e));
     }
-}
-
-fn find_and_copy() {
-
 }
 
 fn main() {

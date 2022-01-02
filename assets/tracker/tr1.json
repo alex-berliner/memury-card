@@ -6,7 +6,6 @@
             "sync_loc": "gba",
             "filetypes": [
                 "sav",
-                "txt",
                 "ss1"
             ]
         },
