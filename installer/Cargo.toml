@@ -1,0 +1,15 @@
+[package]
+name = "installer"
+description = ""
+version = "0.1.0"
+authors = [""]
+license = "MIT"
+repository = ""
+documentation = ""
+build = "build.rs"
+
+[dependencies]
+winapi = { version = "0.3", features = [ "winuser" ] }
+
+[build-dependencies]
+winres = "0.1.12"
