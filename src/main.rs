@@ -1,28 +1,3 @@
-// EMUry Card
-// Emury Card
-// Memury Card
-// mEMUry Card
-/*
-watcher can watch paths and files but the events only carry the exact file that was modified, not the path that registered
-the file. this makes it hard to know which rules to apply to the file, particularly with path-watched files because the
-files don't have an explicit reference to do something like reference into a hashmap with. the path registered for a
-file could be determined by repeatedly chopping off the last part of the file and checking for it in the hash map.
-This would solve everything but two overlapping directories being registered, which seems like a reasonable restriction
-to the user and something that might be easy to validate at startup.
-
-single SaveDir with contextual settings in json, figure out fields on the fly
-hashmap stores
-
-resolving same-name files when registering directories
-register /a
-
-/a/b/s.sav
-/a/c/s.sav
-
-"preserve_structure": "true" (default: true)
-
-*/
-
 use notify::{watcher, DebouncedEvent, RecursiveMode, Watcher};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
