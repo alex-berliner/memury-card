@@ -6,6 +6,18 @@
             "sync_loc": "gba",
             "filetypes": [
                 "sav",
+                "txt",
+                "ss1"
+            ]
+        },
+        {
+            "name": "funkey gba",
+            "dir": "G:\\Game Boy Advance",
+            "sync_loc": "gba",
+            "filetypes": [
+                "sav",
+                "svs",
+                "sgm",
                 "ss1"
             ]
         }

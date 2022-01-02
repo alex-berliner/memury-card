@@ -33,16 +33,22 @@ use std::thread;
 use std::time::Duration;
 use structopt::StructOpt;
 use walkdir::WalkDir;
+use std::io::stdout;
+use std::io::Write;
 
 mod helper;
 
-enum HashmapCmd {
+#[derive(StructOpt)]
+struct Cli {
+    #[structopt(default_value = "settings.json")]
+    settings: std::path::PathBuf,
+}
+
+enum FileOpCmd {
     Watch(SaveDef),
     Unwatch(String),
     Copy(PathBuf),
-}
-
-struct Empty {
+    Scan(),
 }
 
 struct SaveFile {
@@ -79,7 +85,8 @@ impl SaveDir {
         }
     }
 
-    fn has_type(&self, p: &PathBuf) -> bool{
+    // check if file @p has extension valid for this save directory, since there can be multiple
+    fn has_appropriate_type(&self, p: &PathBuf) -> bool {
         let ext = p.extension().unwrap().to_str().unwrap();
         for ftype in &self.filetypes {
             if ftype == ext {
@@ -91,19 +98,16 @@ impl SaveDir {
 }
 
 // cli thread
-fn interactive(json_dir: &str, file_add_tx: &mpsc::Sender<HashmapCmd>) {
-    find_json_settings(json_dir, file_add_tx);
+fn interactive(json_dir: &str, file_op_tx: &mpsc::Sender<FileOpCmd>) {
+    find_json_settings(json_dir, file_op_tx);
     loop {
         println!("Enter command: ");
         let mut input = String::new();
         std::io::stdin().read_line(&mut input).unwrap();
         let input = input.trim();
         match input {
-            // "s" => {
-            //     find_json_settings(json_dir, file_add_tx);
-            // }
             "s" => {
-                find_json_settings(json_dir, file_add_tx);
+                file_op_tx.send(FileOpCmd::Scan());
             }
             _ => (),
         }
@@ -114,7 +118,7 @@ fn interactive(json_dir: &str, file_add_tx: &mpsc::Sender<HashmapCmd>) {
 fn save_scanner(
     json_dir: &str,
     file_scan_rx: mpsc::Receiver<notify::DebouncedEvent>,
-    file_add_tx: &mpsc::Sender<HashmapCmd>,
+    file_op_tx: &mpsc::Sender<FileOpCmd>,
 ) {
     loop {
         match file_scan_rx.recv() {
@@ -122,7 +126,7 @@ fn save_scanner(
                 DebouncedEvent::Write(p) | DebouncedEvent::Chmod(p) => {
                     let p = PathBuf::from(p);
                     println!("{:?}", p);
-                    file_add_tx.send(HashmapCmd::Copy(p));
+                    file_op_tx.send(FileOpCmd::Copy(p));
                 }
                 DebouncedEvent::NoticeWrite(p) => {
                     // println!("NoticeWrite {:?}", p);
@@ -154,8 +158,10 @@ fn find_appropriate_savedef_path(p: &PathBuf, save_map: &HashMap<PathBuf, SaveDe
     let mut p = p.clone();
     let root = PathBuf::from("/");
     let empty = PathBuf::from("");
+    let c = PathBuf::from("C:\\");
+    let g = PathBuf::from("G:\\");
 
-    while !save_map.contains_key(&p) && p != root && p != empty {
+    while !save_map.contains_key(&p) && p != root && p != empty && p != c && p != g {
         p.pop();
     }
 
@@ -170,13 +176,14 @@ fn find_appropriate_savedef_path(p: &PathBuf, save_map: &HashMap<PathBuf, SaveDe
 fn save_watcher(
     sync_dir: &str,
     file_scan_tx: std::sync::mpsc::Sender<notify::DebouncedEvent>,
-    file_add_rx: std::sync::mpsc::Receiver<HashmapCmd>,
+    file_op_tx: std::sync::mpsc::Sender<FileOpCmd>,
+    file_op_rx: std::sync::mpsc::Receiver<FileOpCmd>,
 ) {
     let mut watcher = watcher(file_scan_tx, Duration::from_secs(1)).unwrap();
     let mut save_map: HashMap<PathBuf, SaveDef> = HashMap::new();
     loop {
-        match file_add_rx.recv().unwrap() {
-            HashmapCmd::Watch(save) => {
+        match file_op_rx.recv().unwrap() {
+            FileOpCmd::Watch(save) => {
                 print!("watch ");
                 save.print();
                 let p = save.path.clone();
@@ -188,37 +195,48 @@ fn save_watcher(
                 // TOOD: if err...
                 // println!("{:?}", save_map.contains_key(&save.path));
             }
-            HashmapCmd::Unwatch(rmpath) => {
+            FileOpCmd::Unwatch(rmpath) => {
                 // watcher.unwatch(&entry).unwrap();
             }
-            HashmapCmd::Copy(src) => {
-                match find_appropriate_savedef_path(&src, &save_map) {
-                    Ok(p) => {
-                        let err = format!("could not find {:?}", p);
-                        let save_reg = save_map.get(&p).expect(&err);
-                        let mut sync_loc = PathBuf::from("");
-                        sync_loc.push(save_reg.sync_loc.clone());
-                        let has_type = match &save_reg.options {
-                            SaveOpts::Dir(e) => e.has_type(&src),
-                            _ => true,
-                        };
+            FileOpCmd::Copy(src) => {
+                let key = find_appropriate_savedef_path(&src, &save_map).unwrap();
+                let err = format!("could not find {:?}", key);
+                let save_reg = save_map.get(&key).expect(&err);
+                let mut sync_loc = PathBuf::from(save_reg.sync_loc.clone());
+                let has_appropriate_type = match &save_reg.options {
+                    SaveOpts::Dir(e) => e.has_appropriate_type(&src),
+                    _ => true,
+                };
 
-                        if has_type {
-                            let mut dst = PathBuf::from(sync_dir);
-                            let src_file_name = src.file_name().expect("this was probably not a file");
+                if has_appropriate_type {
+                    let mut dst = PathBuf::from(sync_dir);
+                    let src_file_name = src.file_name().expect("this was probably not a file");
 
-                            dst.push(sync_loc);
-                            dst.set_extension("");
-                            std::fs::create_dir_all(&dst);
+                    dst.push(sync_loc);
+                    dst.set_extension("");
+                    std::fs::create_dir_all(&dst);
 
-                            dst.push(&src_file_name);
-                            dst.set_extension(src.extension().unwrap());
-                            println!("copy {:?} into save manager at {:?}", src, dst);
-                            std::fs::copy(&src, &dst);
-                        }
+                    dst.push(&src_file_name);
+                    dst.set_extension(src.extension().unwrap());
+                    println!("copy {:?} into save manager at {:?}", src, dst);
+                    match std::fs::copy(&src, &dst) {
+                        Err(e) => {
+                            println!("\nfile copy error: {:?} {:?} {:?}", e, src, dst);
+                            println!("{:?} exists: {:?}", src, src.exists());
+                            println!("{:?} exists: {:?}\n", dst, dst.exists());
+                            ()
+                        },
+                        _ => (),
                     }
-                    _ => {
-                        println!("bad path {:?}", src);
+                }
+            }
+            FileOpCmd::Scan() => {
+                for (key, value) in &save_map {
+                    for entry in WalkDir::new(key).follow_links(true).into_iter().filter_map(|e| e.ok()) {
+                        let p = PathBuf::from(entry.path());
+                        if p.is_file() {
+                            file_op_tx.send(FileOpCmd::Copy(PathBuf::from(entry.path())));
+                        }
                     }
                 }
             }
@@ -280,42 +298,46 @@ fn get_json_settings_descriptors(json_dir: &str) -> Vec<SaveDef> {
         if f_name.ends_with(".json") {
             let entry = entry.path().to_str().unwrap();
             parse_save_json(&entry, &mut save_accu);
-            // file_add_tx.send(entry.clone().to_string());
+            // file_op_tx.send(entry.clone().to_string());
         }
     }
     save_accu
 }
 
 // crawl through saves listed from save files and send results to watcher thread
-fn find_json_settings(json_dir: &str, file_add_tx: &mpsc::Sender<HashmapCmd>) {
+fn find_json_settings(json_dir: &str, file_op_tx: &mpsc::Sender<FileOpCmd>) {
     let saves = get_json_settings_descriptors(json_dir);
     for e in saves {
-        file_add_tx.send(HashmapCmd::Watch(e));
+        file_op_tx.send(FileOpCmd::Watch(e));
     }
 }
 
+fn find_and_copy() {
+
+}
+
 fn main() {
-    let parse = helper::parse_json(&helper::get_settings_filepath()).unwrap();
+    let args = Cli::from_args();
+    let parse = helper::parse_json(&args.settings).unwrap();
     let tracker_dir1 = parse["tracker_dir"].to_string();
     let tracker_dir2 = tracker_dir1.clone();
 
     let sync_dir = helper::strip_quotes(&parse["sync_dir"].to_string());
 
     let (file_scan_tx, file_scan_rx) = mpsc::channel();
-    let (file_add_tx, file_add_rx) = mpsc::channel();
-    let file_add_tx2 = file_add_tx.clone();
+    let (file_op_tx, file_op_rx) = mpsc::channel();
+    let file_op_tx2 = file_op_tx.clone();
+    let file_op_tx3 = file_op_tx.clone();
 
     let save_scanner_handle = thread::spawn(move || {
-        save_scanner(&tracker_dir1, file_scan_rx, &file_add_tx);
+        save_scanner(&tracker_dir1, file_scan_rx, &file_op_tx);
     });
     let save_watcher_handle = thread::spawn(move || {
-        save_watcher(&sync_dir, file_scan_tx, file_add_rx);
+        save_watcher(&sync_dir, file_scan_tx, file_op_tx3, file_op_rx);
     });
     let interactive_handle = thread::spawn(move || {
-        interactive(&tracker_dir2, &file_add_tx2);
+        interactive(&tracker_dir2, &file_op_tx2);
     });
-
-    println!("{:?}", helper::get_settings_filepath());
 
     save_scanner_handle.join().unwrap();
     save_watcher_handle.join().unwrap();
