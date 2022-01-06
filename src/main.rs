@@ -1,7 +1,6 @@
 mod service;
 mod helper;
 mod windows;
-use chrono;
 use argh::FromArgs;
 use std::{thread, time};
 use std::io::Write;
@@ -25,6 +24,14 @@ struct MCArgs {
     /// launch as background process
     #[argh(switch, short = 'b')]
     background: bool,
+}
+
+fn print_splash() {
+    log::info!(r"    __  ___________  _____  ________  __   _________    ____  ____ ");
+    log::info!(r"   /  |/  / ____/  |/  / / / / __ \ \/ /  / ____/   |  / __ \/ __ \");
+    log::info!(r"  / /|_/ / __/ / /|_/ / / / / /_/ /\  /  / /   / /| | / /_/ / / / /");
+    log::info!(r" / /  / / /___/ /  / / /_/ / _, _/ / /  / /___/ ___ |/ _, _/ /_/ / ");
+    log::info!(r"/_/  /_/_____/_/  /_/\____/_/ |_| /_/   \____/_/  |_/_/ |_/_____/  ");
 }
 
 fn main() {
@@ -57,7 +64,7 @@ fn main() {
 
     // log start time
     log::info!("{}", chrono::offset::Local::now());
-
+    print_splash();
     // parse args
     let mcargs: MCArgs = argh::from_env();
     if mcargs.uninstall {
