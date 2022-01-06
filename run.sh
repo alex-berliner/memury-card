@@ -1,2 +1,2 @@
 cd assets
-cargo run
+cargo run -- $@
