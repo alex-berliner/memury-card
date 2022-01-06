@@ -2,5 +2,5 @@ mod service;
 mod helper;
 
 fn main() {
-    service::heavy::run();
+    service::service::run();
 }

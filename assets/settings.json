@@ -1,6 +1,6 @@
 {
     "tracker_dir": "tracker",
-    "sync_dir": "C:\\Users\\alexb\\Dropbox\\sync",
+    "sync_dir": "C:/Users/alexb/Dropbox/sync",
     "ignore_filetypes": [
         "iso",
         "gba"

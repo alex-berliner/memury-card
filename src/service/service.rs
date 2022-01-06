@@ -11,8 +11,6 @@ use walkdir::WalkDir;
 use std::io::stdout;
 use std::io::Write;
 
-// mod helper;
-// mod windows;
 
 #[derive(StructOpt)]
 struct Cli {

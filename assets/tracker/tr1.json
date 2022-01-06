@@ -2,7 +2,7 @@
     "saves": [
         {
             "name": "mgba",
-            "dir": "C:\\ROMs\\GBA",
+            "dir": "C:/ROMs/GBA",
             "sync_loc": "gba",
             "filetypes": [
                 "sav",
@@ -11,15 +11,15 @@
         },
         {
             "name": "dolphin",
-            "dir": "C:\\Users\\alexb\\Documents\\Dolphin Emulator\\GC\\USA\\Card A",
-            "sync_loc": "Dolphin Emulator\\GC\\USA\\Card A",
+            "dir": "C:/Users/alexb/Documents/Dolphin Emulator/GC/USA/Card A",
+            "sync_loc": "Dolphin Emulator/GC/USA/Card A",
             "filetypes": [
                 "gci"
             ]
         },
         {
             "name": "funkey gba",
-            "dir": "G:\\Game Boy Advance",
+            "dir": "G:/Game Boy Advance",
             "sync_loc": "gba",
             "filetypes": [
                 "sav",
@@ -30,7 +30,7 @@
         },
         {
             "name": "funkey gb",
-            "dir": "G:\\Game Boy",
+            "dir": "G:/Game Boy",
             "sync_loc": "gb",
             "filetypes": [
                 "fkcfg",
@@ -40,7 +40,7 @@
         },
         {
             "name": "funkey gbc",
-            "dir": "G:\\Game Boy Color",
+            "dir": "G:/Game Boy Color",
             "sync_loc": "gbc",
             "filetypes": [
                 "fkcfg",
@@ -50,7 +50,7 @@
         },
         {
             "name": "funkey snes",
-            "dir": "G:\\SNES",
+            "dir": "G:/SNES",
             "sync_loc": "snes",
             "filetypes": [
                 "fkcfg",
