@@ -1,9 +1,8 @@
 use serde_json::{Result, Value};
 use sha2::{Digest, Sha256};
-use std::fs;
-use std::path::{PathBuf, Path};
+use std::path::PathBuf;
 
-pub fn parse_json(p: &std::path::PathBuf) -> Result<Value> {
+pub fn parse_json(p: &PathBuf) -> Result<Value> {
     let bytes = std::fs::read_to_string(p).unwrap();
     serde_json::from_str(&bytes)
 }
@@ -16,7 +15,7 @@ pub fn strip_quotes(s: &str) -> String {
 
 #[allow(dead_code)]
 pub fn print_type_of<T>(_: &T) {
-    println!("{}", std::any::type_name::<T>())
+    log::info!("{}", std::any::type_name::<T>())
 }
 
 pub fn file_sha256(path: &str) -> String {

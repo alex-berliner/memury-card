@@ -1,15 +1,12 @@
 use notify::{watcher, DebouncedEvent, RecursiveMode, Watcher};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
-use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 use structopt::StructOpt;
 use walkdir::WalkDir;
-use std::io::stdout;
-use std::io::Write;
 
 
 #[derive(StructOpt)]
@@ -47,7 +44,7 @@ struct SaveDef {
 
 impl SaveDef {
     fn print(&self) {
-        println!("{:?}", self.path);
+        log::info!("{:?}", self.path);
     }
 }
 
@@ -55,7 +52,7 @@ impl SaveDir {
     #[allow(dead_code)]
     fn print(&self) {
         for j in 0..self.filetypes.len() {
-            println!("filetype: {}", self.filetypes[j]);
+            log::info!("filetype: {}", self.filetypes[j]);
         }
     }
 
@@ -76,7 +73,7 @@ fn interactive(json_dir: &str, file_op_tx: &mpsc::Sender<FileOpCmd>) {
     find_json_settings(json_dir, file_op_tx);
     file_op_tx.send(FileOpCmd::Scan());
     loop {
-        println!("Enter command: ");
+        log::info!("Enter command: ");
         let mut input = String::new();
         std::io::stdin().read_line(&mut input).unwrap();
         let input = input.trim();
@@ -100,24 +97,24 @@ fn save_scanner(
             Ok(event) => match event {
                 DebouncedEvent::Write(p) | DebouncedEvent::Chmod(p) | DebouncedEvent::Create(p) => {
                     let p = PathBuf::from(p);
-                    println!("{:?}", p);
+                    log::info!("{:?}", p);
                     file_op_tx.send(FileOpCmd::Copy(p));
                 }
                 DebouncedEvent::NoticeWrite(p) => {
-                    // println!("NoticeWrite {:?}", p);
+                    // log::info!("NoticeWrite {:?}", p);
                 }
                 DebouncedEvent::Remove(p) => {
-                    println!("Remove {:?}", p);
+                    log::info!("Remove {:?}", p);
                 }
                 DebouncedEvent::NoticeRemove(p) => {
-                    println!("NoticeRemove {:?}", p);
+                    log::info!("NoticeRemove {:?}", p);
                 }
                 DebouncedEvent::Rename(a, b) => {
-                    println!("Rename {:?} -> {:?}", a, b);
+                    log::info!("Rename {:?} -> {:?}", a, b);
                 }
                 _ => (),
             },
-            Err(e) => println!("watch error: {:?}", e),
+            Err(e) => log::info!("watch error: {:?}", e),
         };
     }
 }
@@ -155,7 +152,7 @@ fn save_watcher(
                 save.print();
                 let p = save.path.clone();
                 if !p.exists() {
-                    println!("{:?} doesn't exist", p);
+                    log::info!("{:?} doesn't exist", p);
                 }
                 let err = watcher.watch(&p, RecursiveMode::Recursive);
                 save_map.entry(p.clone()).or_insert(save);
@@ -184,12 +181,12 @@ fn save_watcher(
 
                     dst.push(&src_file_name);
                     dst.set_extension(src.extension().unwrap());
-                    println!("copy {:?} into save manager at {:?}", src, dst);
+                    log::info!("copy {:?} into save manager at {:?}", src, dst);
                     match std::fs::copy(&src, &dst) {
                         Err(e) => {
-                            println!("\nfile copy error: {:?} {:?} {:?}", e, src, dst);
-                            println!("{:?} exists: {:?}", src, src.exists());
-                            println!("{:?} exists: {:?}\n", dst, dst.exists());
+                            log::info!("\nfile copy error: {:?} {:?} {:?}", e, src, dst);
+                            log::info!("{:?} exists: {:?}", src, src.exists());
+                            log::info!("{:?} exists: {:?}\n", dst, dst.exists());
                             ()
                         },
                         _ => (),
