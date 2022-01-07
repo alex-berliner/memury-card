@@ -85,9 +85,7 @@ impl SaveDir {
             }
             RuleList::Disallowed(v) => {
                 let pstr = p.to_str().unwrap();
-                log::info!("parsing disallowed as {}", pstr);
                 for disallowed in v {
-                    log::info!("disallowed {} pstr.ends_with(disallowed) {}", disallowed, pstr.ends_with(disallowed));
                     if pstr.ends_with(disallowed) {
                         return false;
                     }
@@ -201,7 +199,6 @@ fn save_watcher(
                     _ => true,
                 };
 
-
                 if has_appropriate_type {
                     let mut dst = PathBuf::from(sync_dir);
                     let src_file_name = src.file_name().expect("this was probably not a file");
@@ -211,8 +208,11 @@ fn save_watcher(
                     std::fs::create_dir_all(&dst);
 
                     dst.push(&src_file_name);
-                    dst.set_extension(src.extension().unwrap());
-                    log::info!("copy {:?} into save manager at {:?}", src, dst);
+                    match src.extension() {
+                        Some(e) => dst.set_extension(e),
+                        _ => false,
+                    };
+
                     match std::fs::copy(&src, &dst) {
                         Err(e) => {
                             log::info!("\nfile copy error: {:?} {:?} {:?}", e, src, dst);

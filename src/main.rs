@@ -27,6 +27,7 @@ struct MCArgs {
 }
 
 fn main() {
+    helper::print_splash();
     // set cwd to path of exe
     let cwd = std::env::current_dir().unwrap();
     let mut exedir = std::env::current_exe().unwrap();
@@ -56,7 +57,6 @@ fn main() {
 
     // log start time
     log::info!("{}", chrono::offset::Local::now());
-    helper::print_splash();
     // parse args
     let mcargs: MCArgs = argh::from_env();
     if mcargs.uninstall {
