@@ -244,14 +244,15 @@ fn parse_save_json(json_file: &str, save_accu: &mut Vec<SaveDef>) {
     let json: Value = serde_json::from_str(&bytes).unwrap();
     let saves = json["saves"].as_array().unwrap();
 
-    for i in 0..saves.len() {
+    for i in 0 .. saves.len() {
         // json elements with the "dir" field populated are directories
         let mut path = PathBuf::new();
-        let is_dir = saves[i]["dir"] != Value::Null;
-        let name = crate::helper::strip_quotes(saves[i]["name"].as_str().unwrap());
-        let sync_loc = PathBuf::from(crate::helper::strip_quotes(saves[i]["sync_loc"].as_str().unwrap()));
+        let name =  if saves[i]["name"] == Value::Null { "NO_NAME".to_string() }
+                    else { crate::helper::strip_quotes(saves[i]["name"].as_str().unwrap()) };
+        let sync_loc =  if saves[i]["sync_loc"] == Value::Null { PathBuf::from("") }
+                        else { PathBuf::from(crate::helper::strip_quotes(saves[i]["sync_loc"].as_str().unwrap())) };
 
-        let mut saveopt = if is_dir {
+        let mut saveopt = if saves[i]["dir"] != Value::Null {
             path.push(crate::helper::strip_quotes(saves[i]["dir"].as_str().unwrap()));
             log::debug!("{:?}", path);
             if saves[i]["allowed"] != Value::Null && saves[i]["disallowed"] != Value::Null {
@@ -267,7 +268,7 @@ fn parse_save_json(json_file: &str, save_accu: &mut Vec<SaveDef>) {
             let rule_list = if saves[i]["allowed"] != Value::Null {
                 let allowed = saves[i]["allowed"].as_array().unwrap();
                 let mut allowed_vec: Vec<String> = vec![];
-                for j in 0..allowed.len() {
+                for j in 0 .. allowed.len() {
                     let filetypes_str = allowed[j].as_str().unwrap().to_string();
                     if filetypes_str.len() > 0 {
                         allowed_vec.push(filetypes_str);
