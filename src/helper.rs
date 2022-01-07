@@ -2,6 +2,14 @@ use serde_json::{Result, Value};
 use sha2::{Digest, Sha256};
 use std::path::PathBuf;
 
+pub fn print_splash() {
+    log::info!(r"    __  ___________  _____  ________  __   _________    ____  ____ ");
+    log::info!(r"   /  |/  / ____/  |/  / / / / __ \ \/ /  / ____/   |  / __ \/ __ \");
+    log::info!(r"  / /|_/ / __/ / /|_/ / / / / /_/ /\  /  / /   / /| | / /_/ / / / /");
+    log::info!(r" / /  / / /___/ /  / / /_/ / _, _/ / /  / /___/ ___ |/ _, _/ /_/ / ");
+    log::info!(r"/_/  /_/_____/_/  /_/\____/_/ |_| /_/   \____/_/  |_/_/ |_/_____/  ");
+}
+
 pub fn parse_json(p: &PathBuf) -> Result<Value> {
     let bytes = std::fs::read_to_string(p).unwrap();
     serde_json::from_str(&bytes)

@@ -26,14 +26,6 @@ struct MCArgs {
     background: bool,
 }
 
-fn print_splash() {
-    log::info!(r"    __  ___________  _____  ________  __   _________    ____  ____ ");
-    log::info!(r"   /  |/  / ____/  |/  / / / / __ \ \/ /  / ____/   |  / __ \/ __ \");
-    log::info!(r"  / /|_/ / __/ / /|_/ / / / / /_/ /\  /  / /   / /| | / /_/ / / / /");
-    log::info!(r" / /  / / /___/ /  / / /_/ / _, _/ / /  / /___/ ___ |/ _, _/ /_/ / ");
-    log::info!(r"/_/  /_/_____/_/  /_/\____/_/ |_| /_/   \____/_/  |_/_/ |_/_____/  ");
-}
-
 fn main() {
     // set cwd to path of exe
     let cwd = std::env::current_dir().unwrap();
@@ -64,7 +56,7 @@ fn main() {
 
     // log start time
     log::info!("{}", chrono::offset::Local::now());
-    print_splash();
+    helper::print_splash();
     // parse args
     let mcargs: MCArgs = argh::from_env();
     if mcargs.uninstall {
