@@ -25,8 +25,13 @@ enum FileOpCmd {
 struct SaveFile {
 }
 
+enum RuleList {
+    Allowed(Vec<String>),
+    Disallowed(Vec<String>),
+}
+
 struct SaveDir {
-    filetypes: Vec<String>,
+    rule_list: RuleList,
     files: HashSet<PathBuf>,
 }
 
@@ -51,20 +56,45 @@ impl SaveDef {
 impl SaveDir {
     #[allow(dead_code)]
     fn print(&self) {
-        for j in 0..self.filetypes.len() {
-            log::info!("filetype: {}", self.filetypes[j]);
+        let rule_list = match &self.rule_list {
+            RuleList::Allowed(v) =>  {
+                log::info!("allowed");
+                v
+            }
+            RuleList::Disallowed(v) => {
+                log::info!("disallowed");
+                v
+            }
+        };
+        for i in 0 .. rule_list.len() {
+            log::info!("{}", rule_list[i]);
         }
     }
 
-    // check if file @p has extension valid for this save directory, since there can be multiple
-    fn has_appropriate_type(&self, p: &PathBuf) -> bool {
-        let ext = p.extension().unwrap().to_str().unwrap();
-        for ftype in &self.filetypes {
-            if ftype == ext {
-                return true;
+
+    fn meets_rules(&self, p: &PathBuf) -> bool {
+        match &self.rule_list {
+            RuleList::Allowed(v) =>  {
+                let ext = p.extension().unwrap().to_str().unwrap();
+                for ftype in v {
+                    if ftype == ext {
+                        return false;
+                    }
+                }
+                true
+            }
+            RuleList::Disallowed(v) => {
+                let pstr = p.to_str().unwrap();
+                log::info!("parsing disallowed as {}", pstr);
+                for disallowed in v {
+                    log::info!("disallowed {} pstr.ends_with(disallowed) {}", disallowed, pstr.ends_with(disallowed));
+                    if pstr.ends_with(disallowed) {
+                        return false;
+                    }
+                }
+                true
             }
         }
-        return false;
     }
 }
 
@@ -167,9 +197,10 @@ fn save_watcher(
                 let save_reg = save_map.get(&key).expect(&err);
                 let mut sync_loc = PathBuf::from(save_reg.sync_loc.clone());
                 let has_appropriate_type = match &save_reg.options {
-                    SaveOpts::Dir(e) => e.has_appropriate_type(&src),
+                    SaveOpts::Dir(e) => { e.meets_rules(&src) },
                     _ => true,
                 };
+
 
                 if has_appropriate_type {
                     let mut dst = PathBuf::from(sync_dir);
@@ -219,16 +250,45 @@ fn parse_save_json(json_file: &str, save_accu: &mut Vec<SaveDef>) {
         let is_dir = saves[i]["dir"] != Value::Null;
         let name = crate::helper::strip_quotes(saves[i]["name"].as_str().unwrap());
         let sync_loc = PathBuf::from(crate::helper::strip_quotes(saves[i]["sync_loc"].as_str().unwrap()));
+
         let mut saveopt = if is_dir {
             path.push(crate::helper::strip_quotes(saves[i]["dir"].as_str().unwrap()));
+            log::debug!("{:?}", path);
+            if saves[i]["allowed"] != Value::Null && saves[i]["disallowed"] != Value::Null {
+                log::error!("{:?} can only have an allow list or disallow list", path);
+                continue;
+            }
+
+            if saves[i]["allowed"] == Value::Null && saves[i]["disallowed"] == Value::Null {
+                log::error!("{:?} must have either allow or disallow list", path);
+                continue;
+            }
+
+            let rule_list = if saves[i]["allowed"] != Value::Null {
+                let allowed = saves[i]["allowed"].as_array().unwrap();
+                let mut allowed_vec: Vec<String> = vec![];
+                for j in 0..allowed.len() {
+                    let filetypes_str = allowed[j].as_str().unwrap().to_string();
+                    if filetypes_str.len() > 0 {
+                        allowed_vec.push(filetypes_str);
+                    }
+                }
+                RuleList::Allowed({allowed_vec})
+            } else /* if saves[i]["disallowed"] != Value::Null */ {
+                let disallowed = saves[i]["disallowed"].as_array().unwrap();
+                let mut disallowed_vec: Vec<String> = vec![];
+                for j in 0..disallowed.len() {
+                    let disallowed_str = disallowed[j].as_str().unwrap().to_string();
+                    if disallowed_str.len() > 0 {
+                        disallowed_vec.push(disallowed_str);
+                    }
+                }
+                RuleList::Disallowed({disallowed_vec})
+            };
             let mut savedir = SaveDir {
-                filetypes: vec![],
+                rule_list: rule_list,
                 files: HashSet::new(),
             };
-            let mut filetypes = saves[i]["filetypes"].as_array().unwrap();
-            for j in 0..filetypes.len() {
-                savedir.filetypes.push(filetypes[j].as_str().unwrap().to_string());
-            }
             SaveOpts::Dir(savedir)
         } else {
             path.push(crate::helper::strip_quotes(saves[i]["file"].as_str().unwrap()));

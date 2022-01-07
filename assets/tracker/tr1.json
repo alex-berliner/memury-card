@@ -4,24 +4,32 @@
             "name": "mgba",
             "dir": "C:/ROMs/GBA",
             "sync_loc": "gba",
-            "filetypes": [
+            "allowed": [
                 "sav",
                 "ss1"
             ]
         },
         {
+            "name": "test funkey gb",
+            "dir": "C:/ROMS/Game Boy",
+            "sync_loc": "gb",
+            "disallowed": [
+                "gb",
+                "txt",
+                "png"
+            ]
+        },
+        {
             "name": "dolphin",
             "dir": "C:/Users/alexb/Documents/Dolphin Emulator/GC/USA/Card A",
-            "sync_loc": "Dolphin Emulator/GC/USA/Card A",
-            "filetypes": [
-                "gci"
-            ]
+            "sync_loc": "gamecube",
+            "disallowed": [ ]
         },
         {
             "name": "funkey gba",
             "dir": "G:/Game Boy Advance",
             "sync_loc": "gba",
-            "filetypes": [
+            "allowed": [
                 "sav",
                 "svs",
                 "sgm",
@@ -32,7 +40,7 @@
             "name": "funkey gb",
             "dir": "G:/Game Boy",
             "sync_loc": "gb",
-            "filetypes": [
+            "allowed": [
                 "fkcfg",
                 "quicksave",
                 "sav"
@@ -42,7 +50,7 @@
             "name": "funkey gbc",
             "dir": "G:/Game Boy Color",
             "sync_loc": "gbc",
-            "filetypes": [
+            "allowed": [
                 "fkcfg",
                 "quicksave",
                 "sav"
@@ -52,7 +60,7 @@
             "name": "funkey snes",
             "dir": "G:/SNES",
             "sync_loc": "snes",
-            "filetypes": [
+            "allowed": [
                 "fkcfg",
                 "quicksave",
                 "sv0"
