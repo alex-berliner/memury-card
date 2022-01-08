@@ -238,6 +238,12 @@ fn save_watcher(
     }
 }
 
+// this will be a platform specific function
+// https://crates.io/crates/sanitize-filename also look at
+fn sanitize_slashes(s: &str) -> String{
+    str::replace(s, "/", r"\")
+}
+
 // parse user generated json files indicating location of content storage areas
 fn parse_save_json(json_file: &str, save_accu: &mut Vec<SaveDef>) {
     let bytes = std::fs::read_to_string(json_file).unwrap();
@@ -253,7 +259,8 @@ fn parse_save_json(json_file: &str, save_accu: &mut Vec<SaveDef>) {
                         else { PathBuf::from(crate::helper::strip_quotes(saves[i]["sync_loc"].as_str().unwrap())) };
 
         let mut saveopt = if saves[i]["dir"] != Value::Null {
-            path.push(crate::helper::strip_quotes(saves[i]["dir"].as_str().unwrap()));
+            let dir = sanitize_slashes(&crate::helper::strip_quotes(saves[i]["dir"].as_str().unwrap()));
+            path.push(dir);
             log::debug!("{:?}", path);
             if saves[i]["allowed"] != Value::Null && saves[i]["disallowed"] != Value::Null {
                 log::error!("{:?} can only have an allow list or disallow list", path);
@@ -338,10 +345,10 @@ fn find_json_settings(json_dir: &str, file_op_tx: &mpsc::Sender<FileOpCmd>) {
 pub fn run() {
     let args = Cli::from_args();
     let parse = crate::helper::parse_json(&args.settings).unwrap();
-    let tracker_dir1 = parse["tracker_dir"].to_string();
+    let tracker_dir1 = sanitize_slashes(&parse["tracker_dir"].to_string());
     let tracker_dir2 = tracker_dir1.clone();
 
-    let sync_dir = crate::helper::strip_quotes(&parse["sync_dir"].to_string());
+    let sync_dir = sanitize_slashes(&crate::helper::strip_quotes(&parse["sync_dir"].to_string()));
 
     let (file_scan_tx, file_scan_rx) = mpsc::channel();
     let (file_op_tx, file_op_rx) = mpsc::channel();
