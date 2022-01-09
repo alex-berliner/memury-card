@@ -213,6 +213,7 @@ fn save_watcher(
                         _ => false,
                     };
 
+                    log::info!("file copy: {:?} {:?}", src, dst);
                     match std::fs::copy(&src, &dst) {
                         Err(e) => {
                             log::info!("\nfile copy error: {:?} {:?} {:?}", e, src, dst);
@@ -240,7 +241,7 @@ fn save_watcher(
 
 // this will be a platform specific function
 // https://crates.io/crates/sanitize-filename also look at
-fn sanitize_slashes(s: &str) -> String{
+fn sanitize_slashes(s: &str) -> String {
     str::replace(s, "/", r"\")
 }
 
@@ -267,12 +268,11 @@ fn parse_save_json(json_file: &str, save_accu: &mut Vec<SaveDef>) {
                 continue;
             }
 
-            if saves[i]["allowed"] == Value::Null && saves[i]["disallowed"] == Value::Null {
-                log::error!("{:?} must have either allow or disallow list", path);
-                continue;
-            }
-
-            let rule_list = if saves[i]["allowed"] != Value::Null {
+            let rule_list = if saves[i]["allowed"] == Value::Null && saves[i]["disallowed"] == Value::Null {
+                log::debug!("providing empty disallow list for {:?}", path);
+                let empty_disallowed_vec: Vec<String> = vec![];
+                RuleList::Disallowed({empty_disallowed_vec})
+            } else if saves[i]["allowed"] != Value::Null {
                 let allowed = saves[i]["allowed"].as_array().unwrap();
                 let mut allowed_vec: Vec<String> = vec![];
                 for j in 0 .. allowed.len() {
