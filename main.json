@@ -23,6 +23,11 @@
         {
             "file": "/home/alex/Dropbox/rand/a/c/c.txt",
             "sync_loc": "insertc"
+        },
+        {
+            "name": "ps2",
+            "dir": "C:/Users/alexb/Documents/PCSX21/memcards/Mcd001_converted",
+            "sync_loc": "ps2"
         }
     ]
 }
