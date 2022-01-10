@@ -10,6 +10,11 @@
             ]
         },
         {
+            "name": "ps2",
+            "dir": "C:/Users/alexb/Documents/PCSX21/memcards/Mcd001_converted",
+            "sync_loc": "ps2"
+        },
+        {
             "name": "test funkey gb",
             "dir": "C:/ROMS/Game Boy",
             "sync_loc": "gb",

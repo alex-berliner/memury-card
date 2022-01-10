@@ -26,6 +26,7 @@ pub fn print_type_of<T>(_: &T) {
     log::info!("{}", std::any::type_name::<T>())
 }
 
+#[allow(dead_code)]
 pub fn file_sha256(path: &str) -> String {
     // TODO: check file exists
     // TODO: make better hash format

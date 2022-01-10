@@ -1,6 +1,6 @@
 use notify::{watcher, DebouncedEvent, RecursiveMode, Watcher};
 use serde_json::Value;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::mpsc;
 use std::thread;
@@ -17,6 +17,7 @@ struct Cli {
 
 enum FileOpCmd {
     Watch(SaveDef),
+    #[allow(dead_code)]
     Unwatch(String),
     Copy(PathBuf),
     Scan(),
@@ -32,7 +33,6 @@ enum RuleList {
 
 struct SaveDir {
     rule_list: RuleList,
-    files: HashSet<PathBuf>,
 }
 
 enum SaveOpts {
@@ -41,6 +41,7 @@ enum SaveOpts {
 }
 
 struct SaveDef {
+    #[allow(dead_code)]
     name: String,
     path: PathBuf,
     sync_loc: PathBuf,
@@ -99,7 +100,7 @@ impl SaveDir {
 // cli thread
 fn interactive(json_dir: &str, file_op_tx: &mpsc::Sender<FileOpCmd>) {
     find_json_settings(json_dir, file_op_tx);
-    file_op_tx.send(FileOpCmd::Scan());
+    file_op_tx.send(FileOpCmd::Scan()).unwrap();
     loop {
         log::info!("Enter command: ");
         let mut input = String::new();
@@ -107,7 +108,7 @@ fn interactive(json_dir: &str, file_op_tx: &mpsc::Sender<FileOpCmd>) {
         let input = input.trim();
         match input {
             "s" => {
-                file_op_tx.send(FileOpCmd::Scan());
+                file_op_tx.send(FileOpCmd::Scan()).unwrap();
             }
             _ => (),
         }
@@ -116,7 +117,6 @@ fn interactive(json_dir: &str, file_op_tx: &mpsc::Sender<FileOpCmd>) {
 
 // thread to handle events coming in on the file watcher
 fn save_scanner(
-    json_dir: &str,
     file_scan_rx: mpsc::Receiver<notify::DebouncedEvent>,
     file_op_tx: &mpsc::Sender<FileOpCmd>,
 ) {
@@ -126,9 +126,9 @@ fn save_scanner(
                 DebouncedEvent::Write(p) | DebouncedEvent::Chmod(p) | DebouncedEvent::Create(p) => {
                     let p = PathBuf::from(p);
                     log::info!("{:?}", p);
-                    file_op_tx.send(FileOpCmd::Copy(p));
+                    file_op_tx.send(FileOpCmd::Copy(p)).unwrap();
                 }
-                DebouncedEvent::NoticeWrite(p) => {
+                DebouncedEvent::NoticeWrite(_) => {
                     // log::info!("NoticeWrite {:?}", p);
                 }
                 DebouncedEvent::Remove(p) => {
@@ -179,20 +179,20 @@ fn save_watcher(
                 save.print();
                 let p = save.path.clone();
                 if !p.exists() {
-                    log::info!("{:?} doesn't exist", p);
+                    log::warn!("{:?} doesn't exist", p);
                 }
-                let err = watcher.watch(&p, RecursiveMode::Recursive);
+                let _err = watcher.watch(&p, RecursiveMode::Recursive);
                 save_map.entry(p.clone()).or_insert(save);
                 // TODO: if err...
             }
-            FileOpCmd::Unwatch(rmpath) => {
+            FileOpCmd::Unwatch(_rmpath) => {
                 // watcher.unwatch(&entry).unwrap();
             }
             FileOpCmd::Copy(src) => {
                 let key = find_appropriate_savedef_path(&src, &save_map).unwrap();
-                let err = format!("could not find {:?}", key);
-                let save_reg = save_map.get(&key).expect(&err);
-                let mut sync_loc = PathBuf::from(save_reg.sync_loc.clone());
+                let _err = format!("could not find {:?}", key);
+                let save_reg = save_map.get(&key).expect(&_err);
+                let sync_loc = PathBuf::from(save_reg.sync_loc.clone());
                 let has_appropriate_type = match &save_reg.options {
                     SaveOpts::Dir(e) => { e.meets_rules(&src) },
                     _ => true,
@@ -205,7 +205,7 @@ fn save_watcher(
                     dst.push(sync_loc);
                     dst.push(folder);
 
-                    std::fs::create_dir_all(&dst);
+                    std::fs::create_dir_all(&dst).expect("Could not create_dir_all");
                     dst.push(fname);
                     match src.extension() {
                         Some(e) => dst.set_extension(e),
@@ -224,11 +224,11 @@ fn save_watcher(
                 }
             }
             FileOpCmd::Scan() => {
-                for (key, value) in &save_map {
+                for (key, _) in &save_map {
                     for entry in WalkDir::new(key).follow_links(true).into_iter().filter_map(|e| e.ok()) {
                         let p = PathBuf::from(entry.path());
                         if p.is_file() {
-                            file_op_tx.send(FileOpCmd::Copy(PathBuf::from(entry.path())));
+                            file_op_tx.send(FileOpCmd::Copy(PathBuf::from(entry.path()))).unwrap();
                         }
                     }
                 }
@@ -257,7 +257,7 @@ fn parse_save_json(json_file: &str, save_accu: &mut Vec<SaveDef>) {
         let sync_loc =  if saves[i]["sync_loc"] == Value::Null { PathBuf::from("") }
                         else { PathBuf::from(crate::helper::strip_quotes(saves[i]["sync_loc"].as_str().unwrap())) };
 
-        let mut saveopt = if saves[i]["dir"] != Value::Null {
+        let saveopt = if saves[i]["dir"] != Value::Null {
             let dir = sanitize_slashes(&crate::helper::strip_quotes(saves[i]["dir"].as_str().unwrap()));
             path.push(dir);
             log::debug!("{:?}", path);
@@ -269,7 +269,7 @@ fn parse_save_json(json_file: &str, save_accu: &mut Vec<SaveDef>) {
             let rule_list = if saves[i]["allowed"] == Value::Null && saves[i]["disallowed"] == Value::Null {
                 log::debug!("providing empty disallow list for {:?}", path);
                 let empty_disallowed_vec: Vec<String> = vec![];
-                RuleList::Disallowed({empty_disallowed_vec})
+                RuleList::Disallowed(empty_disallowed_vec)
             } else if saves[i]["allowed"] != Value::Null {
                 let allowed = saves[i]["allowed"].as_array().unwrap();
                 let mut allowed_vec: Vec<String> = vec![];
@@ -279,7 +279,7 @@ fn parse_save_json(json_file: &str, save_accu: &mut Vec<SaveDef>) {
                         allowed_vec.push(filetypes_str);
                     }
                 }
-                RuleList::Allowed({allowed_vec})
+                RuleList::Allowed(allowed_vec)
             } else /* if saves[i]["disallowed"] != Value::Null */ {
                 let disallowed = saves[i]["disallowed"].as_array().unwrap();
                 let mut disallowed_vec: Vec<String> = vec![];
@@ -289,11 +289,10 @@ fn parse_save_json(json_file: &str, save_accu: &mut Vec<SaveDef>) {
                         disallowed_vec.push(disallowed_str);
                     }
                 }
-                RuleList::Disallowed({disallowed_vec})
+                RuleList::Disallowed(disallowed_vec)
             };
-            let mut savedir = SaveDir {
+            let savedir = SaveDir {
                 rule_list: rule_list,
-                files: HashSet::new(),
             };
             SaveOpts::Dir(savedir)
         } else {
@@ -336,15 +335,14 @@ fn get_json_settings_descriptors(json_dir: &str) -> Vec<SaveDef> {
 fn find_json_settings(json_dir: &str, file_op_tx: &mpsc::Sender<FileOpCmd>) {
     let saves = get_json_settings_descriptors(json_dir);
     for e in saves {
-        file_op_tx.send(FileOpCmd::Watch(e));
+        file_op_tx.send(FileOpCmd::Watch(e)).unwrap();
     }
 }
 
 pub fn run() {
     let args = Cli::from_args();
     let parse = crate::helper::parse_json(&args.settings).unwrap();
-    let tracker_dir1 = sanitize_slashes(&parse["tracker_dir"].to_string());
-    let tracker_dir2 = tracker_dir1.clone();
+    let tracker_dir = sanitize_slashes(&parse["tracker_dir"].to_string());
 
     let sync_dir = sanitize_slashes(&crate::helper::strip_quotes(&parse["sync_dir"].to_string()));
 
@@ -354,13 +352,13 @@ pub fn run() {
     let file_op_tx3 = file_op_tx.clone();
 
     let save_scanner_handle = thread::spawn(move || {
-        save_scanner(&tracker_dir1, file_scan_rx, &file_op_tx);
+        save_scanner(file_scan_rx, &file_op_tx);
     });
     let save_watcher_handle = thread::spawn(move || {
         save_watcher(&sync_dir, file_scan_tx, file_op_tx3, file_op_rx);
     });
     let interactive_handle = thread::spawn(move || {
-        interactive(&tracker_dir2, &file_op_tx2);
+        interactive(&tracker_dir, &file_op_tx2);
     });
 
     save_scanner_handle.join().unwrap();

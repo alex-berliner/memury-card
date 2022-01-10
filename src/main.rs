@@ -2,8 +2,6 @@ mod service;
 mod helper;
 mod windows;
 use argh::FromArgs;
-use std::{thread, time};
-use std::io::Write;
 use log::LevelFilter;
 use log4rs::append::file::FileAppender;
 use log4rs::encode::pattern::PatternEncoder;
@@ -28,12 +26,9 @@ struct MCArgs {
 
 fn main() {
     helper::print_splash();
-    // set cwd to path of exe
-    let cwd = std::env::current_dir().unwrap();
     let mut exedir = std::env::current_exe().unwrap();
     exedir.pop();
-    std::env::set_current_dir(&exedir);
-    let cwd = std::env::current_dir().unwrap();
+    std::env::set_current_dir(&exedir).unwrap();
 
     // set up logging
     let dt = chrono::Utc::now();
