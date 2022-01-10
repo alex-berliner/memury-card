@@ -34,3 +34,31 @@ pub fn file_sha256(path: &str) -> String {
     hasher.update(bytes);
     format!("{:02X?}", hasher.finalize())
 }
+
+// get the difference in path between p1 and p2, ie:
+// p1: /a/b/c/
+// p2:  /a/b/c/d/e/f.txt
+// ret: (d/e, f.txt)
+pub fn path_diff(p1: PathBuf, p2: PathBuf) -> (PathBuf, PathBuf) {
+    let mut p1i = p1.iter().peekable();
+    let mut p2i = p2.iter().peekable();
+
+    while p1i.peek() == p2i.peek() {
+        p1i.next();
+        p2i.next();
+    }
+
+    let (fname, mut longer_iter) = if p1.iter().count() > p2.iter().count() {
+        (PathBuf::from(p1i.clone().last().unwrap()), p1i)
+    } else {
+        (PathBuf::from(p2i.clone().last().unwrap()), p2i)
+    };
+
+    let mut folder = PathBuf::new();
+    while longer_iter.peek() != None {
+        folder.push(longer_iter.next().unwrap());
+    }
+
+    folder.pop();
+    (folder, fname)
+}

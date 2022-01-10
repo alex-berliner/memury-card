@@ -152,7 +152,6 @@ fn save_scanner(
 // get to the root (ie bad file). files under paths aren't registered, only find events when the dirs has an event
 fn find_appropriate_savedef_path(p: &PathBuf, save_map: &HashMap<PathBuf, SaveDef>) -> Result<PathBuf, String> {
     let mut p = p.clone();
-
     while !save_map.contains_key(&p) && p.parent() != None {
         p.pop();
     }
@@ -201,19 +200,18 @@ fn save_watcher(
 
                 if has_appropriate_type {
                     let mut dst = PathBuf::from(sync_dir);
-                    let src_file_name = src.file_name().expect("this was probably not a file");
+                    let (folder, fname) = crate::helper::path_diff(key.clone(), src.clone());
 
                     dst.push(sync_loc);
-                    dst.set_extension("");
-                    std::fs::create_dir_all(&dst);
+                    dst.push(folder);
 
-                    dst.push(&src_file_name);
+                    std::fs::create_dir_all(&dst);
+                    dst.push(fname);
                     match src.extension() {
                         Some(e) => dst.set_extension(e),
                         _ => false,
                     };
 
-                    log::info!("file copy: {:?} {:?}", src, dst);
                     match std::fs::copy(&src, &dst) {
                         Err(e) => {
                             log::info!("\nfile copy error: {:?} {:?} {:?}", e, src, dst);
