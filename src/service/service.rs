@@ -1,3 +1,4 @@
+use crate::helper;
 use notify::{watcher, DebouncedEvent, RecursiveMode, Watcher};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -200,7 +201,7 @@ fn save_watcher(
 
                 if has_appropriate_type {
                     let mut dst = PathBuf::from(sync_dir);
-                    let (folder, fname) = crate::helper::path_diff(key.clone(), src.clone());
+                    let (folder, fname) = helper::path_diff(key.clone(), src.clone());
 
                     dst.push(sync_loc);
                     dst.push(folder);
@@ -237,12 +238,6 @@ fn save_watcher(
     }
 }
 
-// this will be a platform specific function
-// https://crates.io/crates/sanitize-filename also look at
-fn sanitize_slashes(s: &str) -> String {
-    str::replace(s, "/", r"\")
-}
-
 // parse user generated json files indicating location of content storage areas
 fn parse_save_json(json_file: &str, save_accu: &mut Vec<SaveDef>) {
     let bytes = std::fs::read_to_string(json_file).unwrap();
@@ -253,12 +248,12 @@ fn parse_save_json(json_file: &str, save_accu: &mut Vec<SaveDef>) {
         // json elements with the "dir" field populated are directories
         let mut path = PathBuf::new();
         let name =  if saves[i]["name"] == Value::Null { "NO_NAME".to_string() }
-                    else { crate::helper::strip_quotes(saves[i]["name"].as_str().unwrap()) };
+                    else { helper::strip_quotes(saves[i]["name"].as_str().unwrap()) };
         let sync_loc =  if saves[i]["sync_loc"] == Value::Null { PathBuf::from("") }
-                        else { PathBuf::from(crate::helper::strip_quotes(saves[i]["sync_loc"].as_str().unwrap())) };
+                        else { PathBuf::from(helper::strip_quotes(saves[i]["sync_loc"].as_str().unwrap())) };
 
         let saveopt = if saves[i]["dir"] != Value::Null {
-            let dir = sanitize_slashes(&crate::helper::strip_quotes(saves[i]["dir"].as_str().unwrap()));
+            let dir = helper::sanitize_slashes(&helper::strip_quotes(saves[i]["dir"].as_str().unwrap()));
             path.push(dir);
             log::debug!("{:?}", path);
             if saves[i]["allowed"] != Value::Null && saves[i]["disallowed"] != Value::Null {
@@ -296,7 +291,7 @@ fn parse_save_json(json_file: &str, save_accu: &mut Vec<SaveDef>) {
             };
             SaveOpts::Dir(savedir)
         } else {
-            path.push(crate::helper::strip_quotes(saves[i]["file"].as_str().unwrap()));
+            path.push(helper::strip_quotes(saves[i]["file"].as_str().unwrap()));
             let savefile = SaveFile {
             };
             SaveOpts::File(savefile)
@@ -313,7 +308,7 @@ fn parse_save_json(json_file: &str, save_accu: &mut Vec<SaveDef>) {
 
 // find all files in @json_dir that end in .json, return a vector of SaveDef's from them
 fn get_json_settings_descriptors(json_dir: &str) -> Vec<SaveDef> {
-    let json_dir = crate::helper::strip_quotes(json_dir);
+    let json_dir = helper::strip_quotes(json_dir);
     let mut save_accu: Vec<SaveDef> = vec![];
 
     for entry in WalkDir::new(json_dir)
@@ -341,10 +336,10 @@ fn find_json_settings(json_dir: &str, file_op_tx: &mpsc::Sender<FileOpCmd>) {
 
 pub fn run() {
     let args = Cli::from_args();
-    let parse = crate::helper::parse_json(&args.settings).unwrap();
-    let tracker_dir = sanitize_slashes(&parse["tracker_dir"].to_string());
+    let parse = helper::parse_json(&args.settings).unwrap();
+    let tracker_dir = helper::sanitize_slashes(&parse["tracker_dir"].to_string());
 
-    let sync_dir = sanitize_slashes(&crate::helper::strip_quotes(&parse["sync_dir"].to_string()));
+    let sync_dir = helper::sanitize_slashes(&helper::strip_quotes(&parse["sync_dir"].to_string()));
 
     let (file_scan_tx, file_scan_rx) = mpsc::channel();
     let (file_op_tx, file_op_rx) = mpsc::channel();
