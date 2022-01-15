@@ -80,10 +80,10 @@ impl SaveDir {
                 let ext = p.extension().unwrap().to_str().unwrap();
                 for ftype in v {
                     if ftype == ext {
-                        return false;
+                        return true;
                     }
                 }
-                true
+                false
             }
             RuleList::Disallowed(v) => {
                 let pstr = p.to_str().unwrap();
