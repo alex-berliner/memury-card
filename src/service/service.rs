@@ -73,6 +73,22 @@ impl SaveDir {
         }
     }
 
+    fn print_rules(&self) {
+        match &self.rule_list {
+            RuleList::Allowed(v) =>  {
+                log::info!("Allowed:");
+                for ftype in v {
+                    log::info!("\t{}", ftype);
+                }
+            }
+            RuleList::Disallowed(v) => {
+                log::info!("Disallowed:");
+                for disallowed in v {
+                    log::info!("\t{}", disallowed);
+                }
+            }
+        }
+    }
 
     fn meets_rules(&self, p: &PathBuf) -> bool {
         match &self.rule_list {
