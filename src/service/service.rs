@@ -10,12 +10,6 @@ use structopt::StructOpt;
 use walkdir::WalkDir;
 
 
-#[derive(StructOpt)]
-struct Cli {
-    #[structopt(default_value = "settings.json")]
-    settings: std::path::PathBuf,
-}
-
 enum FileOpCmd {
     Watch(SaveDef),
     #[allow(dead_code)]
@@ -350,9 +344,8 @@ fn find_json_settings(json_dir: &str, file_op_tx: &mpsc::Sender<FileOpCmd>) {
     }
 }
 
-pub fn run() {
-    let args = Cli::from_args();
-    let parse = helper::parse_json(&args.settings).unwrap();
+pub fn run(settings: &PathBuf) {
+    let parse = helper::parse_json(settings).unwrap();
     let tracker_dir = helper::sanitize_slashes(&parse["tracker_dir"].to_string());
 
     let sync_dir = helper::sanitize_slashes(&helper::strip_quotes(&parse["sync_dir"].to_string()));

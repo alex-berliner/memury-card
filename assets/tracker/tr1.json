@@ -70,6 +70,15 @@
                 "quicksave",
                 "sv0"
             ]
+        },
+        {
+            "name": "mgba",
+            "dir": "/home/alex/Sync",
+            "sync_loc": "gba",
+            "allowed": [
+                "tnt",
+                "txt"
+            ]
         }
     ]
 }

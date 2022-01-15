@@ -4,14 +4,19 @@ mod service;
 mod windows;
 use argh::FromArgs;
 use log::LevelFilter;
-use log4rs::append::file::FileAppender;
-use log4rs::encode::pattern::PatternEncoder;
-use log4rs::config::{Appender, Config, Root};
 use log4rs::append::console::ConsoleAppender;
+use log4rs::append::file::FileAppender;
+use log4rs::config::{Appender, Config, Root};
+use log4rs::encode::pattern::PatternEncoder;
+use std::path::PathBuf;
 
 #[derive(FromArgs)]
 /// Memury Card cli args
 struct MCArgs {
+    /// path to main settings file
+    #[argh(option, short = 's', default = "PathBuf::from(\"settings.json\")")]
+    settings: PathBuf,
+
     /// add program to startup
     #[argh(switch, short = 'i')]
     install: bool,
@@ -67,7 +72,7 @@ fn main() {
         std::process::exit(0);
     } else {
         log::info!("service::service::run()");
-        service::service::run();
+        service::service::run(&mcargs.settings);
     }
     log::info!("exit");
 }
