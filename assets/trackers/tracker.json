@@ -1,0 +1,12 @@
+{
+    "saves": [
+        {
+            "name": "mgba",
+            "saves_path": "C:/ROMs/GBA",
+            "sync_folder": "gba",
+            "disallowed_filetypes": [
+                "gb"
+            ]
+        }
+    ]
+}

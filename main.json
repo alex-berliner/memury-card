@@ -10,24 +10,24 @@
         },
         {
             "file": "/home/alex/.local/share/dolphin-emu/GC/MemoryCardA.USA.raw",
-            "sync_loc": ""
+            "sync_folder": ""
         },
         {
             "file": "/home/alex/Dropbox/rand/bluh.txt",
-            "sync_loc": "insert"
+            "sync_folder": "insert"
         },
         {
             "file": "/home/alex/Dropbox/rand/a/b/c.txt",
-            "sync_loc": "insertb"
+            "sync_folder": "insertb"
         },
         {
             "file": "/home/alex/Dropbox/rand/a/c/c.txt",
-            "sync_loc": "insertc"
+            "sync_folder": "insertc"
         },
         {
             "name": "ps2",
             "dir": "C:/Users/alexb/Documents/PCSX21/memcards/Mcd001_converted",
-            "sync_loc": "ps2"
+            "sync_folder": "ps2"
         }
     ]
 }
