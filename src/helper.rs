@@ -63,3 +63,13 @@ pub fn path_diff(p1: PathBuf, p2: PathBuf) -> (PathBuf, PathBuf) {
     folder.pop();
     (folder, fname)
 }
+
+pub fn sanitize_slashes(s: &str) -> String {
+    #[cfg(target_os = "windows")]
+    let s = str::replace(s, "/", r"\");
+
+    #[cfg(target_os = "linux")]
+    let s = str::replace(s,  r"\", "/");
+
+    path_clean::clean(&s)
+}

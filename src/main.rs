@@ -1,16 +1,22 @@
-mod service;
 mod helper;
+mod linux;
+mod service;
 mod windows;
 use argh::FromArgs;
 use log::LevelFilter;
-use log4rs::append::file::FileAppender;
-use log4rs::encode::pattern::PatternEncoder;
-use log4rs::config::{Appender, Config, Root};
 use log4rs::append::console::ConsoleAppender;
+use log4rs::append::file::FileAppender;
+use log4rs::config::{Appender, Config, Root};
+use log4rs::encode::pattern::PatternEncoder;
+use std::path::PathBuf;
 
 #[derive(FromArgs)]
 /// Memury Card cli args
 struct MCArgs {
+    /// path to main settings file
+    #[argh(option, short = 's', default = "PathBuf::from(\"settings.json\")")]
+    settings: PathBuf,
+
     /// add program to startup
     #[argh(switch, short = 'i')]
     install: bool,
@@ -56,17 +62,17 @@ fn main() {
     let mcargs: MCArgs = argh::from_env();
     if mcargs.uninstall {
         log::info!("mcargs.uninstall");
-        windows::helper::uninstall();
+        service::system::uninstall();
     } else if mcargs.install {
         log::info!("mcargs.install");
-        windows::helper::install(true);
+        service::system::install(true);
     } else if mcargs.background {
         log::info!("mcargs.background");
-        windows::helper::send_to_background();
+        service::system::send_to_background();
         std::process::exit(0);
     } else {
         log::info!("service::service::run()");
-        service::service::run();
+        service::service::run(&mcargs.settings);
     }
     log::info!("exit");
 }

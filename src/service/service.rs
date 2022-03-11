@@ -1,3 +1,4 @@
+use crate::helper;
 use notify::{watcher, DebouncedEvent, RecursiveMode, Watcher};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -8,12 +9,6 @@ use std::time::Duration;
 use structopt::StructOpt;
 use walkdir::WalkDir;
 
-
-#[derive(StructOpt)]
-struct Cli {
-    #[structopt(default_value = "settings.json")]
-    settings: std::path::PathBuf,
-}
 
 enum FileOpCmd {
     Watch(SaveDef),
@@ -72,6 +67,22 @@ impl SaveDir {
         }
     }
 
+    fn print_rules(&self) {
+        match &self.rule_list {
+            RuleList::Allowed(v) =>  {
+                log::info!("Allowed:");
+                for ftype in v {
+                    log::info!("\t{}", ftype);
+                }
+            }
+            RuleList::Disallowed(v) => {
+                log::info!("Disallowed:");
+                for disallowed in v {
+                    log::info!("\t{}", disallowed);
+                }
+            }
+        }
+    }
 
     fn meets_rules(&self, p: &PathBuf) -> bool {
         match &self.rule_list {
@@ -79,10 +90,10 @@ impl SaveDir {
                 let ext = p.extension().unwrap().to_str().unwrap();
                 for ftype in v {
                     if ftype == ext {
-                        return false;
+                        return true;
                     }
                 }
-                true
+                false
             }
             RuleList::Disallowed(v) => {
                 let pstr = p.to_str().unwrap();
@@ -200,7 +211,7 @@ fn save_watcher(
 
                 if has_appropriate_type {
                     let mut dst = PathBuf::from(sync_dir);
-                    let (folder, fname) = crate::helper::path_diff(key.clone(), src.clone());
+                    let (folder, fname) = helper::path_diff(key.clone(), src.clone());
 
                     dst.push(sync_loc);
                     dst.push(folder);
@@ -235,12 +246,6 @@ fn save_watcher(
             }
         }
     }
-}
-
-// this will be a platform specific function
-// https://crates.io/crates/sanitize-filename also look at
-fn sanitize_slashes(s: &str) -> String {
-    str::replace(s, "/", r"\")
 }
 
 // parse user generated json files indicating location of content storage areas
@@ -296,7 +301,7 @@ fn parse_save_json(json_file: &str, save_accu: &mut Vec<SaveDef>) {
             };
             SaveOpts::Dir(savedir)
         } else {
-            path.push(crate::helper::strip_quotes(saves[i]["file"].as_str().unwrap()));
+            path.push(helper::strip_quotes(saves[i]["file"].as_str().unwrap()));
             let savefile = SaveFile {
             };
             SaveOpts::File(savefile)
@@ -313,7 +318,7 @@ fn parse_save_json(json_file: &str, save_accu: &mut Vec<SaveDef>) {
 
 // find all files in @json_dir that end in .json, return a vector of SaveDef's from them
 fn get_json_settings_descriptors(json_dir: &str) -> Vec<SaveDef> {
-    let json_dir = crate::helper::strip_quotes(json_dir);
+    let json_dir = helper::strip_quotes(json_dir);
     let mut save_accu: Vec<SaveDef> = vec![];
 
     for entry in WalkDir::new(json_dir)
