@@ -1,9 +1,3 @@
-    __  ___________  _____  ________  __   _________    ____  ____
-   /  |/  / ____/  |/  / / / / __ \ \/ /  / ____/   |  / __ \/ __ \
-  / /|_/ / __/ / /|_/ / / / / /_/ /\  /  / /   / /| | / /_/ / / / /
- / /  / / /___/ /  / / /_/ / _, _/ / /  / /___/ ___ |/ _, _/ /_/ /
-/_/  /_/_____/_/  /_/\____/_/ |_| /_/   \____/_/  |_/_/ |_/_____/
-
 Memury Card organizes and consolidates all your game saves into a single library.
 
 Tell Memury Card where your save files are and it will continuously update a library of your saves as you play your
